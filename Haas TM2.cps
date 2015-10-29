@@ -4,15 +4,27 @@
 
   HAAS post processor configuration.
 
-  $Revision: 39421 $
-  $Date: 2015-08-19 11:07:47 +0200 (on, 19 aug 2015) $
+  $Revision: 38778 $
+  $Date: 2015-04-07 15:36:26 +0200 (ti, 07 apr 2015) $
   
   FORKID {241E0993-8BE0-463b-8888-47968B9D7F9F}
+
+Modified by Scott Goldthwaite
+Change Log:
+v1.01  7/29/15  Modified optional stop so it would be included on the first tool change, not just 2+.  Also moved it so
+                it's right after the tool change, not before.  Changed highFeedrate default from 500 to 50.
+                Changed the homing at the end of the program to only home Y, not x
+                Changed some of the user-defined properties default
+v1.02  7/30/15  Added Machine info and made mods so it would print
+
 */
 
-description = "Generic HAAS";
-vendor = "Autodesk, Inc.";
-vendorUrl = "http://www.autodesk.com";
+var pp_ver = "1.1";  // added by SRG
+vendor = "Haas";
+model = "TM-2";     // Added by SRG
+description = "Haas Vertical CNC";
+vendorUrl = "http://haascnc.com/";
+
 legal = "Copyright (C) 2012-2015 by Autodesk, Inc.";
 certificationLevel = 2;
 minimumRevision = 24000;
@@ -32,29 +44,29 @@ maximumCircularSweep = toRad(355);
 allowHelicalMoves = true;
 allowedCircularPlanes = undefined; // allow any circular motion
 allowSpiralMoves = true;
-highFeedrate = (unit == IN) ? 500 : 5000;
+highFeedrate = (unit == IN) ? 50 : 5000;
 
 
 
 // user-defined properties
 properties = {
-  writeMachine: true, // write machine
-  writeTools: true, // writes the tools
-  preloadTool: true, // preloads next tool on tool change if any
-  showSequenceNumbers: true, // show sequence numbers
-  sequenceNumberStart: 10, // first sequence number
-  sequenceNumberIncrement: 5, // increment for sequence numbers
+  writeMachine: true,                    // write machine
+  writeTools: true,                      // writes the tools
+  preloadTool: false,                    // preloads next tool on tool change if any
+  showSequenceNumbers: true,             // show sequence numbers
+  sequenceNumberStart: 10,               // first sequence number
+  sequenceNumberIncrement: 5,            // increment for sequence numbers
   sequenceNumberOnlyOnToolChange: false, // only output sequence numbers on tool change
-  optionalStop: true, // optional stop
-  separateWordsWithSpace: true, // specifies that the words should be separated with a white space
-  useRadius: false, // specifies that arcs should be output using the radius (R word) instead of the I, J, and K words.
-  useParametricFeed: false, // specifies that feed should be output using Q values
-  showNotes: false, // specifies that operation notes should be output
-  useG0: false, // allow G0 when moving along more than one axis
-  useG28: false, // specifies that G28 should be used instead of G53
-  useSubroutines: false, // specifies that subroutines should be generated
-  useG187: false, // use G187 to set smoothing on the machine
-  homePositionCenter: false // moves the part in X in center of the door at end of program (ONLY WORKS IF THE TABLE IS MOVING)
+  optionalStop: true,                    // optional stop (M1)
+  separateWordsWithSpace: true,          // the words should be separated with a white space
+  useRadius: false,                      // arcs should be output using the radius (R word) instead of the I, J, and K words.
+  useParametricFeed: false,              // feed should be output using Q values
+  showNotes: true,                       // operation notes should be output
+  useG0: false,                          // allow G0 when moving along more than one axis
+  useG28: true,                          // G28 should be used instead of G53
+  useSubroutines: false,                 // subroutines should be generated
+  useG187: false,                        // use G187 to set smoothing on the machine
+  homePositionCenter: false              // moves the part in X in center of the door at end of program (ONLY WORKS IF THE TABLE IS MOVING)
 };
 
 
@@ -218,6 +230,9 @@ function onOpen() {
 
   sequenceNumber = properties.sequenceNumberStart;
   writeln("%");
+  
+  writeComment(localize("gcode created by Fusion 360"));   // SRG added
+  writeComment("Post processor file version: " + pp_ver);  // SRG added
 
   if (programName) {
     var programId;
@@ -243,11 +258,12 @@ function onOpen() {
   }
 
   // dump machine configuration
-  var vendor = machineConfiguration.getVendor();
-  var model = machineConfiguration.getModel();
-  var description = machineConfiguration.getDescription();
+  // var vendor = machineConfiguration.getVendor();           // SRG - commented out becuase it was deleting the values set at top of program
+  // var model = machineConfiguration.getModel();             // dito 
+  // var description = machineConfiguration.getDescription(); // dito
 
   if (properties.writeMachine && (vendor || model || description)) {
+    writeln(" ");  // SRG - added blank line
     writeComment(localize("Machine"));
     if (vendor) {
       writeComment("  " + localize("vendor") + ": " + vendor);
@@ -259,7 +275,8 @@ function onOpen() {
       writeComment("  " + localize("description") + ": "  + description);
     }
   }
-
+  writeln(" ");  // SRG - added blank line
+  
   // dump tool information
   if (properties.writeTools) {
     var zRanges = {};
@@ -279,6 +296,7 @@ function onOpen() {
 
     var tools = getToolTable();
     if (tools.getNumberOfTools() > 0) {
+    writeComment(" ------ Tool Table ------");   // SRG Added
       for (var i = 0; i < tools.getNumberOfTools(); ++i) {
         var tool = tools.getTool(i);
         var comment = "T" + toolFormat.format(tool.number) + " " +
@@ -295,7 +313,8 @@ function onOpen() {
       }
     }
   }
-
+  writeln(" ");  // SRG - added blank line
+  
   if (false /*properties.useDynamicWorkOffset*/) {
     var failed = false;
     var dynamicWCSs = {};
@@ -728,10 +747,7 @@ function onSection() {
     
     retracted = true;
     onCommand(COMMAND_COOLANT_OFF);
-  
-    if (!isFirstSection() && properties.optionalStop) {
-      onCommand(COMMAND_OPTIONAL_STOP);
-    }
+
 
     if (tool.number > 99) {
       warning(localize("Tool number exceeds maximum value."));
@@ -741,6 +757,12 @@ function onSection() {
     if (tool.comment) {
       writeComment(tool.comment);
     }
+    // SRG - removed !isFirstSection() so processor would add an optional stop (M1) for the fisrt tool
+    // Also moved optional stop after tool change insstead before
+    if (properties.optionalStop) {
+      onCommand(COMMAND_OPTIONAL_STOP);
+    }
+
     var showToolZMin = false;
     if (showToolZMin) {
       if (is3D()) {
@@ -1625,12 +1647,13 @@ function onClose() {
   if (properties.homePositionCenter &&
       hasParameter("part-upper-x") && hasParameter("part-lower-x")) {
     var xCenter = (getParameter("part-upper-x") + getParameter("part-lower-x"))/2;
-    writeBlock(gMotionModal.format(0), "X" + xyzFormat.format(xCenter)); // only desired when X is in the table
+    writeBlock(gMotionModal.format(0), "X" + xyzFormat.format(xCenter));
 
     var yHome = machineConfiguration.hasHomePositionY() ? machineConfiguration.getHomePositionY() : 0;
     writeBlock(gAbsIncModal.format(90), gFormat.format(53), gMotionModal.format(0), "Y" + xyzFormat.format(yHome));
   } else if (!machineConfiguration.hasHomePositionX() && !machineConfiguration.hasHomePositionY()) {
-    writeBlock(gAbsIncModal.format(90), gFormat.format(53), "X" + xyzFormat.format(0), "Y" + xyzFormat.format(0)); // return to home
+//srg    writeBlock(gAbsIncModal.format(90), gFormat.format(53), "X" + xyzFormat.format(0), "Y" + xyzFormat.format(0)); // return to x & y home
+    writeBlock(gAbsIncModal.format(90), gFormat.format(53), "Y" + xyzFormat.format(0)); // return to y-home
   } else {
     var homeX;
     if (machineConfiguration.hasHomePositionX()) {
