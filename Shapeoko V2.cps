@@ -1,27 +1,20 @@
-/*
-Shapeoko post processor configuration.
-Used Grbl generic post processor as a starting point
+/**
+  Copyright (C) 2012-2015 by Autodesk, Inc.
+  All rights reserved.
 
-Change Log
-v1.10 04/24/15 - commented out G28 (retract to safe plane) because it doesn't work on shapeoko
-                 Added z-axis move to initial position, which is the clearance height
-v1.20 04/27/15 - moved work coordinate line so it's before the first z-exis move and prints comment if G55 or higher.  
-	         Added comments to G20/G21 
-v1.30 05/13/15 - Commented out tool change code "Tx M6" bacause Shapeoko+GRBL doesn't support M6 pause used in a tool change
-                 Changed code so description, vendor and model are printed out in comments.  Added some blank lines and sectin headers
-	         Added Post Processor version number, vv_ver
-v1.31 08/11/15 - Modified onCircular() so it would be more precise on G2/G3 moves.  If error is greater then 0.005" GRBL will generate an error. 
-                 See: https://camforum.autodesk.com/index.php?topic=7571
-                      https://github.com/vlachoudis/bCNC/issues/88#issuecomment-129568125
+  Grbl post processor configuration.
+
+  $Revision: 39140 $
+  $Date: 2015-06-10 14:13:32 +0200 (on, 10 jun 2015) $
+  
+  FORKID {154F7C00-6549-4c77-ADE0-79375FE5F2AA}
 
 */
 
-var pp_ver = "1.31";      // added by SRG
-vendor = "Inventables";
-model = "Shapeoko 2";     // Added by SRG
-description = "descktop CNC router";
-vendorUrl = "http://www.shapeoko.com/";
-legal = "Copyright (C) 2012-2014 by Autodesk, Inc.";
+description = "Generic Grbl";
+vendor = "Autodesk, Inc.";
+vendorUrl = "http://www.autodesk.com";
+legal = "Copyright (C) 2012-2015 by Autodesk, Inc.";
 certificationLevel = 2;
 minimumRevision = 24000;
 
@@ -43,15 +36,17 @@ allowedCircularPlanes = undefined; // allow any circular motion
 
 // user-defined properties
 properties = {
-  writeMachine: true,          // write machine
-  writeTools: true,            // writes the tools
-  showSequenceNumbers: false,  // show sequence numbers
-  sequenceNumberStart: 10,     // first sequence number
-  sequenceNumberIncrement: 1,  // increment for sequence numbers
+  writeMachine: true, // write machine
+  writeTools: true, // writes the tools
+  useG28: true, // disable to avoid G28 output for safe machine retracts - when disabled you must manually ensure safe retracts
+  showSequenceNumbers: false, // show sequence numbers
+  sequenceNumberStart: 10, // first sequence number
+  sequenceNumberIncrement: 1, // increment for sequence numbers
   separateWordsWithSpace: true // specifies that the words should be separated with a white space
 };
 
 var numberOfToolSlots = 9999;
+
 
 
 var mapCoolantTable = new Table(
@@ -63,29 +58,29 @@ var mapCoolantTable = new Table(
 var gFormat = createFormat({prefix:"G", decimals:0});
 var mFormat = createFormat({prefix:"M", decimals:0});
 
-var xyzFormat =   createFormat({decimals:(unit == MM ? 3 : 4)});
-var feedFormat =  createFormat({decimals:(unit == MM ? 1 : 2)});
-var toolFormat =  createFormat({decimals:0});
-var rpmFormat =   createFormat({decimals:0});
-var secFormat =   createFormat({decimals:3, forceDecimal:true}); // seconds - range 0.001-1000
+var xyzFormat = createFormat({decimals:(unit == MM ? 3 : 4)});
+var feedFormat = createFormat({decimals:(unit == MM ? 1 : 2)});
+var toolFormat = createFormat({decimals:0});
+var rpmFormat = createFormat({decimals:0});
+var secFormat = createFormat({decimals:3, forceDecimal:true}); // seconds - range 0.001-1000
 var taperFormat = createFormat({decimals:1, scale:DEG});
 
-var xOutput =    createVariable({prefix:"X"}, xyzFormat);
-var yOutput =    createVariable({prefix:"Y"}, xyzFormat);
-var zOutput =    createVariable({prefix:"Z"}, xyzFormat);
+var xOutput = createVariable({prefix:"X"}, xyzFormat);
+var yOutput = createVariable({prefix:"Y"}, xyzFormat);
+var zOutput = createVariable({prefix:"Z"}, xyzFormat);
 var feedOutput = createVariable({prefix:"F"}, feedFormat);
-var sOutput =    createVariable({prefix:"S", force:true}, rpmFormat);
+var sOutput = createVariable({prefix:"S", force:true}, rpmFormat);
 
 // circular output
 var iOutput = createReferenceVariable({prefix:"I"}, xyzFormat);
 var jOutput = createReferenceVariable({prefix:"J"}, xyzFormat);
 var kOutput = createReferenceVariable({prefix:"K"}, xyzFormat);
 
-var gMotionModal =   createModal({}, gFormat); // modal group 1 // G0-G3, ...
-var gPlaneModal =    createModal({onchange:function () {gMotionModal.reset();}}, gFormat); // modal group 2 // G17-19
-var gAbsIncModal =   createModal({}, gFormat); // modal group 3 // G90-91
+var gMotionModal = createModal({}, gFormat); // modal group 1 // G0-G3, ...
+var gPlaneModal = createModal({onchange:function () {gMotionModal.reset();}}, gFormat); // modal group 2 // G17-19
+var gAbsIncModal = createModal({}, gFormat); // modal group 3 // G90-91
 var gFeedModeModal = createModal({}, gFormat); // modal group 5 // G93-94
-var gUnitModal =     createModal({}, gFormat); // modal group 6 // G20-21
+var gUnitModal = createModal({}, gFormat); // modal group 6 // G20-21
 
 var WARNING_WORK_OFFSET = 0;
 
@@ -124,36 +119,31 @@ function onOpen() {
   sequenceNumber = properties.sequenceNumberStart;
   writeln("%");
 
-  writeComment(localize("gcode created by Fusion 360"));   // SRG added
-  writeComment("Post processor file version: " + pp_ver);  // SRG added
-  
   if (programName) {
-    writeComment("Program name: " + programName + "." + extension);  // SRG modified
+    writeComment(programName);
   }
   if (programComment) {
     writeComment(programComment);
   }
 
   // dump machine configuration
-//  var vendor =      machineConfiguration.getVendor();         // SRG - commented out becuase it was deleting the values set at top of program
-//  var model =       machineConfiguration.getModel();          // SRG dito   
-//  var description = machineConfiguration.getDescription();    // SRG dito
+  var vendor = machineConfiguration.getVendor();
+  var model = machineConfiguration.getModel();
+  var description = machineConfiguration.getDescription();
 
   if (properties.writeMachine && (vendor || model || description)) {
-    writeln(" ");  // SRG - added blank line
-    writeComment(localize("----- Machine Info-----"));
+    writeComment(localize("Machine"));
     if (vendor) {
-      writeComment(localize("vendor") + ": " + vendor);
+      writeComment("  " + localize("vendor") + ": " + vendor);
     }
     if (model) {
-      writeComment(localize("model") + ": " + model);
+      writeComment("  " + localize("model") + ": " + model);
     }
     if (description) {
-      writeComment(localize("desc") + ": "  + description);
+      writeComment("  " + localize("description") + ": "  + description);
     }
   }
-  writeln(" ");  // SRG - added blank line
-  
+
   // dump tool information
   if (properties.writeTools) {
     var zRanges = {};
@@ -173,11 +163,10 @@ function onOpen() {
 
     var tools = getToolTable();
     if (tools.getNumberOfTools() > 0) {
-      writeComment(" ------ Tool Table ------");   // SRG Added
       for (var i = 0; i < tools.getNumberOfTools(); ++i) {
         var tool = tools.getTool(i);
         var comment = "T" + toolFormat.format(tool.number) + "  " +
-          "Dia=" + xyzFormat.format(tool.diameter) + " " +
+          "D=" + xyzFormat.format(tool.diameter) + " " +
           localize("CR") + "=" + xyzFormat.format(tool.cornerRadius);
         if ((tool.taperAngle > 0) && (tool.taperAngle < Math.PI)) {
           comment += " " + localize("TAPER") + "=" + taperFormat.format(tool.taperAngle) + localize("deg");
@@ -191,19 +180,15 @@ function onOpen() {
     }
   }
 
-  writeln(" ");  // SRG - added blank line
-
   // absolute coordinates and feed per min
   writeBlock(gAbsIncModal.format(90), gFeedModeModal.format(94));
   writeBlock(gPlaneModal.format(17));
 
   switch (unit) {
   case IN:
-    writeComment("Imperial Units - inch");  // SRG added
     writeBlock(gUnitModal.format(20));
     break;
   case MM:
-    writeComment("Metric Units - mm");  // SRG added
     writeBlock(gUnitModal.format(21));
     break;
   }
@@ -243,39 +228,13 @@ function onSection() {
       onCommand(COMMAND_STOP_SPINDLE);
     }
 
-    // retract to safe plane
-    // SRG - Commented out because G28 doesn't work on Shapeoko
-    //   retracted = true;
-    //   writeBlock(gFormat.format(28), gAbsIncModal.format(91), "Z" + xyzFormat.format(0)); // retract
-    //   writeBlock(gAbsIncModal.format(90));
-
-  // wcs
-  // SRG - this section originally came later, I moved it here so it would be before the z-axis move below
-  var workOffset = currentSection.workOffset;
-  if (workOffset == 0) {
-    warningOnce(localize("Work offset has not been specified. Using G54 as WCS."), WARNING_WORK_OFFSET);
-    workOffset = 1;
-  }
-  if (workOffset > 0) {
-    if (workOffset > 6) {
-      error(localize("Work offset out of range."));
-      return;
-    } else {
-      if (workOffset != currentWorkOffset) {
-        if(workOffset >= 2) {   // srg - added comment for wc is G55 or higher
-        writeComment("Set custom work coordinates"); }  
-        writeBlock(gFormat.format(53 + workOffset)); // G54->G59  
-        currentWorkOffset = workOffset;
-      }
-    }
-  }
-
-
-    // SRG - Added following 2 lines - tells Z-axis to go to it's initial position
-    var initialPosition = getFramePosition(currentSection.getInitialPosition());
-    writeBlock(gMotionModal.format(0), zOutput.format(initialPosition.z));
-    
-    zOutput.reset();
+	if (properties.useG28) {
+      // retract to safe plane
+      retracted = true;
+      writeBlock(gFormat.format(28), gAbsIncModal.format(91), "Z" + xyzFormat.format(0)); // retract
+      writeBlock(gAbsIncModal.format(90));
+      zOutput.reset();
+	}
   }
 
   writeln("");
@@ -295,8 +254,7 @@ function onSection() {
       warning(localize("Tool number exceeds maximum value."));
     }
 
-    // writeBlock("T" + toolFormat.format(tool.number), mFormat.format(6));   // Shapeoko/GRBL doesn't support M6 (Puase).  
-    writeComment("T" + toolFormat.format(tool.number) + " M06 - not supported by Shapeoko/GRBL");    // Put tool change code into gcode comment
+    writeBlock("T" + toolFormat.format(tool.number), mFormat.format(6));
     if (tool.comment) {
       writeComment(tool.comment);
     }
@@ -333,8 +291,23 @@ function onSection() {
     );
   }
 
-
-  // SRG -  wcs section was here, I moved it up in program so it was prior to any moves
+  // wcs
+  var workOffset = currentSection.workOffset;
+  if (workOffset == 0) {
+    warningOnce(localize("Work offset has not been specified. Using G54 as WCS."), WARNING_WORK_OFFSET);
+    workOffset = 1;
+  }
+  if (workOffset > 0) {
+    if (workOffset > 6) {
+      error(localize("Work offset out of range."));
+      return;
+    } else {
+      if (workOffset != currentWorkOffset) {
+        writeBlock(gFormat.format(53 + workOffset)); // G54->G59
+        currentWorkOffset = workOffset;
+      }
+    }
+  }
 
   forceXYZ();
 
@@ -477,17 +450,7 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
   }
 
   var start = getCurrentPosition();
-  
-  // SRG - added to make M2/M3 more precise so GRBL wouldn't generate error
-  var radius= Math.sqrt(Math.pow(xyzFormat.format(cx - start.x), 2) + Math.pow(xyzFormat.format(cy - start.y), 2));
-  var error= Math.abs(Math.sqrt(Math.pow(xyzFormat.format(x) - xyzFormat.format(cx), 2) + Math.pow(xyzFormat.format(y) - xyzFormat.format(cy), 2)) - radius) /radius;
-  if (getCircularPlane() == PLANE_XY) {
-    if (error > toPreciseUnit(0.0049, IN)) {
-      linearize(tolerance); 
-      return;
-    }
-  }
-  
+
   if (isFullCircle()) {
     if (isHelical()) {
       linearize(tolerance);
@@ -566,14 +529,15 @@ function onSectionEnd() {
 function onClose() {
   onCommand(COMMAND_COOLANT_OFF);
 
-// SRG commented out, G28 doesn't work with shapeoko
-//  writeBlock(gFormat.format(28), gAbsIncModal.format(91), "Z" + xyzFormat.format(0)); // retract
-
-  zOutput.reset();
+  if (properties.useG28) {
+    writeBlock(gFormat.format(28), gAbsIncModal.format(91), "Z" + xyzFormat.format(0)); // retract
+    zOutput.reset();
+  }
 
   if (!machineConfiguration.hasHomePositionX() && !machineConfiguration.hasHomePositionY()) {
-  // SRG Commented out
-  //    writeBlock(gFormat.format(28), gAbsIncModal.format(91), "X" + xyzFormat.format(0), "Y" + xyzFormat.format(0)); // return to home
+    if (properties.useG28) {
+      writeBlock(gFormat.format(28), gAbsIncModal.format(91), "X" + xyzFormat.format(0), "Y" + xyzFormat.format(0)); // return to home
+	}
   } else {
     var homeX;
     if (machineConfiguration.hasHomePositionX()) {
@@ -588,7 +552,6 @@ function onClose() {
 
   onImpliedCommand(COMMAND_END);
   onImpliedCommand(COMMAND_STOP_SPINDLE);
-  // SRG - commented out, because G30 will reset the active work coordinates 
-  //  writeBlock(mFormat.format(30)); // stop program, spindle stop, coolant off
+  writeBlock(mFormat.format(30)); // stop program, spindle stop, coolant off
   writeln("%");
 }
