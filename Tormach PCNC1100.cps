@@ -2,15 +2,16 @@
   Copyright (C) 2012-2014 by Autodesk, Inc.
   All rights reserved.
 
-  Tormach Mach3Mill post processor configuration.
+  Tormach Path Pilot post processor configuration.
 
-  $Revision: 39140 $
-  $Date: 2015-06-10 14:13:32 +0200 (on, 10 jun 2015) $
+  $Revision: 37254 $
+  $Date: 2014-05-26 11:17:00 +0200 (ma, 26 maj 2014) $
   
   FORKID {AE2102AB-B86A-4aa7-8E9B-F0B6935D4E9F}
-*/
 
-description = "Generic Tormach Mach3Mill";
+*/
+//setWriteStack(true);
+description = "Generic Tormach Path Pilot";
 vendor = "Autodesk, Inc.";
 vendorUrl = "http://www.autodesk.com";
 legal = "Copyright (C) 2012-2014 by Autodesk, Inc.";
@@ -93,14 +94,15 @@ var gPlaneModal = createModal({onchange:function () {gMotionModal.reset();}}, gF
 var gAbsIncModal = createModal({}, gFormat); // modal group 3 // G90-91
 var gFeedModeModal = createModal({}, gFormat); // modal group 5 // G93-94
 var gUnitModal = createModal({}, gFormat); // modal group 6 // G20-21
-var gCycleModal = createModal({}, gFormat); // modal group 9 // G81, ...
-var gRetractModal = createModal({}, gFormat); // modal group 10 // G98-99
+var gCycleModal = createModal({force:false}, gFormat); // modal group 9 // G81, ...
+var gRetractModal = createModal({force:true}, gFormat); // modal group 10 // G98-99
 
 var WARNING_WORK_OFFSET = 0;
 
 // collected state
 var sequenceNumber;
 var currentWorkOffset;
+var previousCoolantMode;
 
 /**
   Writes the specified block.
@@ -148,6 +150,9 @@ function onOpen() {
   sequenceNumber = properties.sequenceNumberStart;
 
   writeln("%");
+  writeln("(*********************************************************)");
+  writeln("(* Tormach Path Pilot Post Processsor Version 0.4 Debug  *)");
+  writeln("(*********************************************************)");
   if (programName) {
     writeComment(programName);
   }
@@ -241,10 +246,10 @@ function onOpen() {
 
   switch (unit) {
   case IN:
-    writeBlock(gUnitModal.format(20));
+    writeBlock(gUnitModal.format(20), "(Inch)" );
     break;
   case MM:
-    writeBlock(gUnitModal.format(21));
+    writeBlock(gUnitModal.format(21), "(Metric)");
     break;
   }
 }
@@ -381,7 +386,8 @@ function onSection() {
     if (properties.useG28) {
       // retract to safe plane
       retracted = true;
-      writeBlock(gFormat.format(28), gAbsIncModal.format(91), "Z" + xyzFormat.format(0)); // retract
+      //writeBlock(gFormat.format(28), gAbsIncModal.format(91), "Z" + xyzFormat.format(0)); // retract
+	  writeBlock(gFormat.format(30)); // use G30 instead of G28 above
       writeBlock(gAbsIncModal.format(90));
       zOutput.reset();
     }
@@ -409,19 +415,20 @@ function onSection() {
     if (tool.number > 256) {
       warning(localize("Tool number exceeds maximum value."));
     }
-    
+	
     var lengthOffset = tool.lengthOffset;
     if (lengthOffset > 256) {
       error(localize("Length offset out of range."));
       return;
     }
 
-    writeBlock(mFormat.format(998));
+ //   writeBlock(mFormat.format(998));
+    writeBlock(gFormat.format(30));
     if (properties.useM6) {
       writeBlock("T" + toolFormat.format(tool.number),
-      gFormat.format(43),
-      hFormat.format(lengthOffset),
-      mFormat.format(6));
+	  gFormat.format(43),
+	  hFormat.format(lengthOffset),
+	  mFormat.format(6));
     } else {
       writeBlock("T" + toolFormat.format(tool.number), gFormat.format(43), hFormat.format(lengthOffset));
     }
@@ -460,10 +467,21 @@ function onSection() {
     }
   }
   
-  if (insertToolCall ||
+    // set coolant after we have positioned at Z
+	    var c = mapCoolantTable.lookup(tool.coolant);
+  /* {
+    var c = mapCoolantTable.lookup(tool.coolant);
+   if (c) {
+      writeBlock(mFormat.format(c));
+    } else {
+      warning(localize("Coolant not supported."));
+    }
+  } */
+  
+ /* if (insertToolCall ||
       isFirstSection() ||
       (rpmFormat.areDifferent(tool.spindleRPM, sOutput.getCurrent())) ||
-      (tool.clockwise != getPreviousSection().getTool().clockwise)) {
+      (tool.clockwise != getPreviousSection().getTool().clockwise) ||  previousCoolantMode != c) { */
     if (tool.spindleRPM < 1) {
       error(localize("Spindle speed out of range."));
       return;
@@ -472,9 +490,11 @@ function onSection() {
       warning(localize("Spindle speed exceeds maximum value."));
     }
     writeBlock(
-      sOutput.format(tool.spindleRPM), mFormat.format(tool.clockwise ? 3 : 4)
+      sOutput.format(tool.spindleRPM), mFormat.format(tool.clockwise ? 3 : 4),
+	  conditional(c, mFormat.format(c)) 
     );
-  }
+	 previousCoolantMode = c;
+ // }
 
   // wcs
   var workOffset = currentSection.workOffset;
@@ -569,14 +589,14 @@ function onSection() {
   }
 
   // set coolant after we have positioned at Z
-  {
+ /* {
     var c = mapCoolantTable.lookup(tool.coolant);
     if (c) {
       writeBlock(mFormat.format(c));
     } else {
       warning(localize("Coolant not supported."));
     }
-  }
+  } */
 }
 
 function onDwell(seconds) {
@@ -672,10 +692,11 @@ function onCyclePoint(x, y, z) {
         if (!F) {
           F = tool.getTappingFeedrate();
         }
-        writeBlock(mFormat.format(29), sOutput.format(tool.spindleRPM));
+        writeBlock(sOutput.format(tool.spindleRPM));
         writeBlock(
           gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(84),
           getCommonCycle(x, y, z, cycle.retract),
+		   "P" + secFormat.format(P),
           feedOutput.format(F)
         );
       }
@@ -691,6 +712,7 @@ function onCyclePoint(x, y, z) {
       writeBlock(
         gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(84),
         getCommonCycle(x, y, z, cycle.retract),
+		 "P" + secFormat.format(P),
         feedOutput.format(F)
       );
       break;
@@ -781,7 +803,8 @@ function onCycleEnd() {
     writeBlock(gCycleModal.format(80));
     zOutput.reset();
   }
-}
+  
+ }
 
 var pendingRadiusCompensation = -1;
 
@@ -825,7 +848,7 @@ function onLinear(_x, _y, _z, feed) {
       case RADIUS_COMPENSATION_RIGHT:
         dOutput.reset();
         // writeBlock(gMotionModal.format(1), dOutput.format(tool.diameter), gFormat.format(42), x, y, z, f);
-        error(localize("Radius compensation mode is not supported by the CNC control."));
+		error(localize("Radius compensation mode is not supported by the CNC control."));
         break;
       default:
         writeBlock(gMotionModal.format(1), gFormat.format(40), x, y, z, f);
@@ -843,10 +866,6 @@ function onLinear(_x, _y, _z, feed) {
 }
 
 function onRapid5D(_x, _y, _z, _a, _b, _c) {
-  if (!currentSection.isOptimizedForMachine()) {
-    error(localize("This post configuration has not been customized for 5-axis simultaneous toolpath."));
-    return;
-  }
   if (pendingRadiusCompensation >= 0) {
     error(localize("Radius compensation mode cannot be changed at rapid traversal."));
     return;
@@ -862,10 +881,6 @@ function onRapid5D(_x, _y, _z, _a, _b, _c) {
 }
 
 function onLinear5D(_x, _y, _z, _a, _b, _c, feed) {
-  if (!currentSection.isOptimizedForMachine()) {
-    error(localize("This post configuration has not been customized for 5-axis simultaneous toolpath."));
-    return;
-  }
   if (pendingRadiusCompensation >= 0) {
     error(localize("Radius compensation cannot be activated/deactivated for 5-axis move."));
     return;
@@ -995,24 +1010,30 @@ function onSectionEnd() {
   }
 
   forceAny();
+  
+   var initialPosition = getFramePosition(currentSection.getInitialPosition());
+    writeBlock( 
+	 // zOutput.format(initialPosition.z), 
+	  mFormat.format(5), 
+	  mFormat.format(9)
+	);
 }
 
 function onClose() {
   writeln("");
 
-  onCommand(COMMAND_COOLANT_OFF);
+  //onCommand(COMMAND_COOLANT_OFF);
 
-  if (properties.useG28) {
+/*  if (properties.useG28) {
     writeBlock(gFormat.format(28), gAbsIncModal.format(91), "Z" + xyzFormat.format(0)); // retract
     zOutput.reset();
   }
-
+  */
+  zOutput.reset();
   setWorkPlane(new Vector(0, 0, 0)); // reset working plane
 
-  if (!machineConfiguration.hasHomePositionX() && !machineConfiguration.hasHomePositionY()) {
-    if (properties.useG28) {
-      writeBlock(gFormat.format(28), gAbsIncModal.format(91), "X" + xyzFormat.format(0), "Y" + xyzFormat.format(0)); // return to home
-    }
+ /* if (properties.useG28 && !machineConfiguration.hasHomePositionX() && !machineConfiguration.hasHomePositionY()) {
+    writeBlock(gFormat.format(28), gAbsIncModal.format(91), "X" + xyzFormat.format(0), "Y" + xyzFormat.format(0)); // return to home
   } else {
     var homeX;
     if (machineConfiguration.hasHomePositionX()) {
@@ -1024,8 +1045,10 @@ function onClose() {
     }
     writeBlock(gAbsIncModal.format(90), gFormat.format(53), gMotionModal.format(0), homeX, homeY);
   }
-
+*/
   onImpliedCommand(COMMAND_END);
   onImpliedCommand(COMMAND_STOP_SPINDLE);
+  writeBlock(gFormat.format(30));
   writeBlock(mFormat.format(30)); // stop program, spindle stop, coolant off
+  writeln("%");
 }
