@@ -9,7 +9,12 @@
   
   FORKID {AE2102AB-B86A-4aa7-8E9B-F0B6935D4E9F}
 
+SRG Change Log:
+5/7/15 Changed coolant so mist cooling would output M8 instead of M7
+
+
 */
+
 //setWriteStack(true);
 description = "Generic Tormach Path Pilot";
 vendor = "Autodesk, Inc.";
@@ -54,7 +59,7 @@ properties = {
 var permittedCommentChars = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,=_-";
 
 var mapCoolantTable = new Table(
-  [9, 8, 7],
+  [9, 8, 8],
   {initial:COOLANT_OFF, force:true},
   "Invalid coolant mode"
 );
