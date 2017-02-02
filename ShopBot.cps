@@ -8,6 +8,7 @@
   $Date: 2016-01-15 18:57:39 +0100 (fr, 15 jan 2016) $
   
   FORKID {866F31A2-119D-485c-B228-090CC89C9BE8}
+
 */
 
 description = "ShopBot OpenSBP";
