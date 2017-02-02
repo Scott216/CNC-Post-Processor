@@ -1,29 +1,38 @@
 /**
-  Copyright (C) 2012-2014 by Autodesk, Inc.
+  Copyright (C) 2012-2016 by Autodesk, Inc.
   All rights reserved.
 
-  Tormach Path Pilot post processor configuration.
+  Tormach PathPilot / Mach3Mill post processor configuration.
 
-  $Revision: 37254 $
-  $Date: 2014-05-26 11:17:00 +0200 (ma, 26 maj 2014) $
+  $Revision: 41275 65a55801602ffd7914cb2ea10935cd9f39fce6c6 $
+  $Date: 2017-01-14 20:39:34 $
   
   FORKID {AE2102AB-B86A-4aa7-8E9B-F0B6935D4E9F}
 
-SRG Change Log:
-5/7/15 Changed coolant so mist cooling would output M8 instead of M7
+
+Autodesk/Tormach change log:
+1/14/2017	Only allow up to 90deg sweeps for G2/G3 moves when using R-word (radius) instead of IJK-words (center) to avoid problems on some CNCs where the center could potentially drift significantly for a correct NC program and hence result in wrong machining. The problem can be exposed when cutting around 180deg arcs on some CNCs. If a particular CNC does not have a such a problem the post can be customized to allow bigger arcs. IJK-mode remains unchanged and is recommended over using R-word.
+1/6/2017	Fixed inverse time support for Tormach post.
+10/19/2016	Added support for multi-axis toolpath and SmartCool for Tormach PathPilot post.
+10/19/2016	Switched to using G30 instead of G28 for Tormach PathPilot post.
+6/6/2016	Added optional dwell for high spindle speed for generic Tormach post.
+6/6/2016	Always force coolant off before tool change for generic Tormach post.
+3/5/2016	Changed description for Tormach milling post to include PathPilot.
+12/15/2015	Updated relevant generic posts to force work offset at tool changes to allow restart of NC program at the tool changes.
 
 
 */
 
-//setWriteStack(true);
-description = "Generic Tormach Path Pilot";
-vendor = "Autodesk, Inc.";
-vendorUrl = "http://www.autodesk.com";
-legal = "Copyright (C) 2012-2014 by Autodesk, Inc.";
+description = "Generic Tormach PathPilot";
+vendor = "Tormach";
+vendorUrl = "http://www.tormach.com";
+legal = "Copyright (C) 2012-2016 by Autodesk, Inc.";
 certificationLevel = 2;
 minimumRevision = 24000;
 
-extension = "TAP";
+longDescription = "Tormach PathPilot post for 3-axis and 4-axis milling with SmartCool support.";
+
+extension = "nc";
 setCodePage("ascii");
 
 tolerance = spatial(0.002, MM);
@@ -42,7 +51,8 @@ allowedCircularPlanes = undefined; // allow any circular motion
 properties = {
   writeMachine: true, // write machine
   writeTools: true, // writes the tools
-  useG28: true, // disable to avoid G28 output
+  writeVersion: false, // include version info
+  useG30: true, // disable to avoid G30 output
   useM6: true, // disable to avoid M6 output - preload is also disabled when M6 is disabled
   preloadTool: false, // preloads next tool on tool change if any
   showSequenceNumbers: true, // show sequence numbers
@@ -50,19 +60,17 @@ properties = {
   sequenceNumberIncrement: 10, // increment for sequence numbers
   optionalStop: true, // optional stop
   separateWordsWithSpace: true, // specifies that the words should be separated with a white space
-  useRadius: true, // specifies that arcs should be output using the radius (R word) instead of the I, J, and K words.
-  dwellInSeconds: true // specifies the unit for dwelling: true:seconds and false:milliseconds.
+  useRadius: false, // specifies that arcs should be output using the radius (R word) instead of the I, J, and K words.
+  dwellInSeconds: true, // specifies the unit for dwelling: true:seconds and false:milliseconds.
+  forceWorkOffset: false, // forces the work offset code at tool changes
+  rotaryTableAxis: "None", // None, X, Y, Z, -X, -Y, -Z
+  smartCoolEquipped: false, // machine has smart coolant attachment
+  smartCoolToolSweepPercentage: 100 // tool length percentage to sweep coolant
 };
 
 
 
-var permittedCommentChars = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,=_-";
-
-var mapCoolantTable = new Table(
-  [9, 8, 8],
-  {initial:COOLANT_OFF, force:true},
-  "Invalid coolant mode"
-);
+var permittedCommentChars = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,=_-*";
 
 var nFormat = createFormat({prefix:"N", decimals:0});
 var gFormat = createFormat({prefix:"G", decimals:1});
@@ -73,8 +81,10 @@ var xyzFormat = createFormat({decimals:(unit == MM ? 3 : 4), forceDecimal:true})
 var rFormat = xyzFormat; // radius
 var abcFormat = createFormat({decimals:3, forceDecimal:true, scale:DEG});
 var feedFormat = createFormat({decimals:(unit == MM ? 0 : 1), forceDecimal:true});
+var inverseTimeFormat = createFormat({decimals:4, forceDecimal:true});
 var toolFormat = createFormat({decimals:0});
 var rpmFormat = createFormat({decimals:0});
+var coolantOptionFormat = createFormat({decimals:0});
 var secFormat = createFormat({decimals:3, forceDecimal:true}); // seconds - range 0.001-99999.999
 var milliFormat = createFormat({decimals:0}); // milliseconds // range 1-9999
 var taperFormat = createFormat({decimals:1, scale:DEG});
@@ -86,6 +96,7 @@ var aOutput = createVariable({prefix:"A"}, abcFormat);
 var bOutput = createVariable({prefix:"B"}, abcFormat);
 var cOutput = createVariable({prefix:"C"}, abcFormat);
 var feedOutput = createVariable({prefix:"F"}, feedFormat);
+var inverseTimeOutput = createVariable({prefix:"F", force:true}, inverseTimeFormat);
 var sOutput = createVariable({prefix:"S", force:true}, rpmFormat);
 var dOutput = createVariable({}, dFormat);
 
@@ -108,6 +119,10 @@ var WARNING_WORK_OFFSET = 0;
 var sequenceNumber;
 var currentWorkOffset;
 var previousCoolantMode;
+var coolantZHeight;
+var masterAxis;
+var maxInverseTime = 9999.9999;
+var previousABC = new Vector(0, 0, 0);
 
 /**
   Writes the specified block.
@@ -121,21 +136,55 @@ function writeBlock() {
   }
 }
 
+function formatComment(text) {
+  return("(" + filterText(String(text), permittedCommentChars) + ")");
+}
+
 /**
   Output a comment.
 */
 function writeComment(text) {
-  writeln("(" + filterText(String(text).toUpperCase(), permittedCommentChars) + ")");
+  writeln(formatComment(text));
+}
+
+/**
+  Compare a text string to acceptable choices.
+
+  Returns -1 if there is no match.
+*/
+function parseChoice() {
+  for (var i = 1; i < arguments.length; ++i) {
+    if (String(arguments[0]).toUpperCase() == String(arguments[i]).toUpperCase()) {
+      return i - 1;
+    }
+  }
+  return -1;
 }
 
 function onOpen() {
+  if (properties.useRadius) {
+    maximumCircularSweep = toRad(90); // avoid potential center calculation errors for CNC
+  }
 
-  if (false) {
-    var aAxis = createAxis({coordinate:0, table:true, axis:[-1, 0, 0], cyclic:true, preference:1});
+  // Define rotary attributes from properties
+  var rotary = parseChoice(properties.rotaryTableAxis, "-Z", "-Y", "-X", "NONE", "X", "Y", "Z");
+  if (rotary < 0) {
+    error(localize("Valid rotaryTableAxis values are: None, X, Y, Z, -X, -Y, -Z"));
+    return;
+  }
+  rotary -= 3;
+
+  // Define Master (carrier) axis
+  masterAxis = Math.abs(rotary) - 1;
+  if (masterAxis >= 0) {
+    var rotaryVector = [0, 0, 0];
+    rotaryVector[masterAxis] = rotary/Math.abs(rotary);
+    var aAxis = createAxis({coordinate:masterAxis, table:true, axis:rotaryVector, cyclic:true, preference:1});
     machineConfiguration = new MachineConfiguration(aAxis);
 
     setMachineConfiguration(machineConfiguration);
-    optimizeMachineAngles2(1); // map tip mode
+    // Single rotary does not use TCP mode
+    optimizeMachineAngles2(1); // 0 = TCP Mode ON, 1 = TCP Mode OFF
   }
 
   if (!machineConfiguration.isMachineCoordinate(0)) {
@@ -155,14 +204,20 @@ function onOpen() {
   sequenceNumber = properties.sequenceNumberStart;
 
   writeln("%");
-  writeln("(*********************************************************)");
-  writeln("(* Tormach Path Pilot Post Processsor Version 0.4 Debug  *)");
-  writeln("(*********************************************************)");
   if (programName) {
     writeComment(programName);
   }
   if (programComment) {
     writeComment(programComment);
+  }
+
+  if (properties.writeVersion) {
+    if (typeof getHeaderVersion == "function" && getHeaderVersion()) {
+        writeComment(localize("post version") + ": " + getHeaderVersion());
+    }
+    if (typeof getHeaderDate == "function" && getHeaderDate()) {
+      writeComment(localize("post modified") + ": " + getHeaderDate());
+    }
   }
 
   // dump machine configuration
@@ -251,10 +306,10 @@ function onOpen() {
 
   switch (unit) {
   case IN:
-    writeBlock(gUnitModal.format(20), "(Inch)" );
+    writeBlock(gUnitModal.format(20), formatComment(localize("Inch")));
     break;
   case MM:
-    writeBlock(gUnitModal.format(21), "(Metric)");
+    writeBlock(gUnitModal.format(21), formatComment(localize("Metric")));
     break;
   }
 }
@@ -319,6 +374,7 @@ function setWorkPlane(abc) {
   onCommand(COMMAND_LOCK_MULTI_AXIS);
 
   currentWorkPlaneABC = abc;
+  previousABC = abc;
 }
 
 var closestABC = false; // choose closest machine angles
@@ -364,7 +420,7 @@ function getWorkPlaneMachineABC(workPlane) {
     );
   }
 
-  var tcp = true;
+  var tcp = false;
   if (tcp) {
     setRotation(W); // TCP mode
   } else {
@@ -387,12 +443,18 @@ function onSection() {
   var newWorkPlane = isFirstSection() ||
     !isSameDirection(getPreviousSection().getGlobalFinalToolAxis(), currentSection.getGlobalInitialToolAxis());
   if (insertToolCall || newWorkOffset || newWorkPlane) {
-    
-    if (properties.useG28) {
+
+/*
+    // stop spindle before retract during tool change
+    if (insertToolCall && !isFirstSection()) {
+      onCommand(COMMAND_STOP_SPINDLE);
+    }
+*/
+  
+    if (properties.useG30) {
       // retract to safe plane
       retracted = true;
-      //writeBlock(gFormat.format(28), gAbsIncModal.format(91), "Z" + xyzFormat.format(0)); // retract
-	  writeBlock(gFormat.format(30)); // use G30 instead of G28 above
+      writeBlock(gFormat.format(30)); // retract
       writeBlock(gAbsIncModal.format(90));
       zOutput.reset();
     }
@@ -409,8 +471,6 @@ function onSection() {
 
   if (insertToolCall) {
     forceWorkPlane();
-    
-    // onCommand(COMMAND_STOP_SPINDLE);
     // onCommand(COMMAND_COOLANT_OFF);
   
     if (!isFirstSection() && properties.optionalStop) {
@@ -420,20 +480,22 @@ function onSection() {
     if (tool.number > 256) {
       warning(localize("Tool number exceeds maximum value."));
     }
-	
+    
     var lengthOffset = tool.lengthOffset;
     if (lengthOffset > 256) {
       error(localize("Length offset out of range."));
       return;
     }
 
- //   writeBlock(mFormat.format(998));
-    writeBlock(gFormat.format(30));
+    // writeBlock(mFormat.format(998));
+    if (properties.useG30) {
+      writeBlock(gFormat.format(30));
+    }
     if (properties.useM6) {
       writeBlock("T" + toolFormat.format(tool.number),
-	  gFormat.format(43),
-	  hFormat.format(lengthOffset),
-	  mFormat.format(6));
+      gFormat.format(43),
+      hFormat.format(lengthOffset),
+      mFormat.format(6));
     } else {
       writeBlock("T" + toolFormat.format(tool.number), gFormat.format(43), hFormat.format(lengthOffset));
     }
@@ -472,21 +534,18 @@ function onSection() {
     }
   }
   
-    // set coolant after we have positioned at Z
-	    var c = mapCoolantTable.lookup(tool.coolant);
-  /* {
-    var c = mapCoolantTable.lookup(tool.coolant);
-   if (c) {
-      writeBlock(mFormat.format(c));
-    } else {
-      warning(localize("Coolant not supported."));
-    }
-  } */
-  
- /* if (insertToolCall ||
+  // Define coolant code
+  var topOfPart = undefined;
+  if (hasParameter("operation:surfaceZHigh")) {
+    topOfPart = getParameter("operation:surfaceZHigh"); // TAG: not safe
+  }
+  var c = setCoolant(tool.coolant, topOfPart);
+
+  if (true ||
+      insertToolCall ||
       isFirstSection() ||
       (rpmFormat.areDifferent(tool.spindleRPM, sOutput.getCurrent())) ||
-      (tool.clockwise != getPreviousSection().getTool().clockwise) ||  previousCoolantMode != c) { */
+      (tool.clockwise != getPreviousSection().getTool().clockwise)) {
     if (tool.spindleRPM < 1) {
       error(localize("Spindle speed out of range."));
       return;
@@ -496,12 +555,17 @@ function onSection() {
     }
     writeBlock(
       sOutput.format(tool.spindleRPM), mFormat.format(tool.clockwise ? 3 : 4),
-	  conditional(c, mFormat.format(c)) 
+      c[0], c[1], c[2]
     );
-	 previousCoolantMode = c;
- // }
+    if ((tool.spindleRPM > 5000) && properties.waitForSpindle) {
+      onDwell(properties.waitForSpindle);
+    }
+  }
 
   // wcs
+  if (insertToolCall && properties.forceWorkOffset) { // force work offset when changing tool
+    currentWorkOffset = undefined;
+  }
   var workOffset = currentSection.workOffset;
   if (workOffset == 0) {
     warningOnce(localize("Work offset has not been specified. Using G54 as WCS."), WARNING_WORK_OFFSET);
@@ -592,16 +656,6 @@ function onSection() {
       yOutput.format(initialPosition.y)
     );
   }
-
-  // set coolant after we have positioned at Z
- /* {
-    var c = mapCoolantTable.lookup(tool.coolant);
-    if (c) {
-      writeBlock(mFormat.format(c));
-    } else {
-      warning(localize("Coolant not supported."));
-    }
-  } */
 }
 
 function onDwell(seconds) {
@@ -618,6 +672,68 @@ function onDwell(seconds) {
 
 function onSpindleSpeed(spindleSpeed) {
   writeBlock(sOutput.format(spindleSpeed));
+}
+
+function setCoolant(coolant, topOfPart) {
+  var coolCodes = ["", "", ""];
+  coolantZHeight = 9999.0;
+
+  // Smart coolant is not enabled
+  if (!properties.smartCoolEquipped) {
+    previousCoolantMode = 8;
+    coolCodes[0] = mFormat.format(previousCoolantMode);
+    if (coolant != COOLANT_FLOOD) {
+      warning(localize("Unsupported coolant setting. Defaulting to FLOOD"));
+    }
+  } else { // Smart coolant is enabled
+    if ((coolant == COOLANT_MIST) || (coolant == COOLANT_AIR)) {
+      previousCoolantMode = 7;
+      coolCodes[0] = mFormat.format(previousCoolantMode);
+    } else {
+      previousCoolantMode = 8;
+      coolCodes[0] = mFormat.format(previousCoolantMode);
+      if (coolant != COOLANT_FLOOD) {
+        warning(localize("Unsupported coolant setting. Defaulting to FLOOD"));
+      }
+    }
+
+    // Determine Smart Coolant location based on machining operation
+    if (hasParameter("operation-strategy")) {
+      var strategy = getParameter("operation-strategy");
+      if (strategy) {
+
+        // Drilling strategy. Keep coolant at top of part
+        if (strategy == "drill") {
+          if (topOfPart != undefined) {
+            coolantZHeight = topOfPart;
+            coolCodes[1] = "E" + xyzFormat.format(coolantZHeight);
+          }
+
+        // Tool end point milling. Keep coolant at end of tool
+        } else if ((strategy == "face") ||
+                   (strategy == "engrave") ||
+                   (strategy == "contour_new") ||
+                   (strategy == "horizontal_new") ||
+                   (strategy == "parallel_new") ||
+                   (strategy == "scallop_new") ||
+                   (strategy == "pencil_new") ||
+                   (strategy == "radial_new") ||
+                   (strategy == "spiral_new") ||
+                   (strategy == "morphed_spiral") ||
+                   (strategy == "ramp") ||
+                   (strategy == "project")) {
+          coolCodes[1] = "P" + coolantOptionFormat.format(0);
+
+        // Side Milling. Sweep the coolant along the length of the tool
+        } else {
+          coolCodes[1] = "P" + coolantOptionFormat.format(0);
+          coolCodes[2] = "R" + xyzFormat.format(tool.fluteLength * (properties.smartCoolToolSweepPercentage/100.0));
+        }
+      }
+    }
+  }
+
+  return coolCodes;
 }
 
 function onCycle() {
@@ -639,6 +755,14 @@ function onCyclePoint(x, y, z) {
 
     var F = cycle.feedrate;
     var P = (cycle.dwell == 0) ? 0 : cycle.dwell; // in seconds
+
+    // Adjust SmartCool to top of part if it changes
+    if (properties.smartCoolEquipped && xyzFormat.areDifferent((z + cycle.depth), coolantZHeight)) {
+      var c = setCoolant(previousCoolantMode, z + cycle.depth);
+      if (c) {
+        writeBlock(c[0], c[1], c[2]);
+      }
+    }
 
     switch (cycleType) {
     case "drilling":
@@ -701,7 +825,7 @@ function onCyclePoint(x, y, z) {
         writeBlock(
           gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(84),
           getCommonCycle(x, y, z, cycle.retract),
-		   "P" + secFormat.format(P),
+          conditional(P > 0, "P" + secFormat.format(P)),
           feedOutput.format(F)
         );
       }
@@ -717,7 +841,7 @@ function onCyclePoint(x, y, z) {
       writeBlock(
         gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(84),
         getCommonCycle(x, y, z, cycle.retract),
-		 "P" + secFormat.format(P),
+        conditional(P > 0, "P" + secFormat.format(P)),
         feedOutput.format(F)
       );
       break;
@@ -808,8 +932,7 @@ function onCycleEnd() {
     writeBlock(gCycleModal.format(80));
     zOutput.reset();
   }
-  
- }
+}
 
 var pendingRadiusCompensation = -1;
 
@@ -836,6 +959,7 @@ function onLinear(_x, _y, _z, feed) {
   var y = yOutput.format(_y);
   var z = zOutput.format(_z);
   var f = feedOutput.format(feed);
+  var fmode = 94;
   if (x || y || z) {
     if (pendingRadiusCompensation >= 0) {
       pendingRadiusCompensation = -1;
@@ -847,30 +971,34 @@ function onLinear(_x, _y, _z, feed) {
       switch (radiusCompensation) {
       case RADIUS_COMPENSATION_LEFT:
         dOutput.reset();
-        // writeBlock(gMotionModal.format(1), dOutput.format(tool.diameter), gFormat.format(41), x, y, z, f);
-        error(localize("Radius compensation mode is not supported by the CNC control."));
+        writeBlock(gMotionModal.format(1), gFormat.format(41), x, y, z, dOutput.format(d), f);
+        // error(localize("Radius compensation mode is not supported by the CNC control."));
         break;
       case RADIUS_COMPENSATION_RIGHT:
         dOutput.reset();
-        // writeBlock(gMotionModal.format(1), dOutput.format(tool.diameter), gFormat.format(42), x, y, z, f);
-		error(localize("Radius compensation mode is not supported by the CNC control."));
+        writeBlock(gMotionModal.format(1), gFormat.format(42), x, y, z, dOutput.format(d), f);
+        // error(localize("Radius compensation mode is not supported by the CNC control."));
         break;
       default:
-        writeBlock(gMotionModal.format(1), gFormat.format(40), x, y, z, f);
+        writeBlock(gFeedModeModal.format(fmode), gMotionModal.format(1), gFormat.format(40), x, y, z, f);
       }
     } else {
-      writeBlock(gMotionModal.format(1), x, y, z, f);
+      writeBlock(gFeedModeModal.format(fmode), gMotionModal.format(1), x, y, z, f);
     }
   } else if (f) {
     if (getNextRecord().isMotion()) { // try not to output feed without motion
       feedOutput.reset(); // force feed on next line
     } else {
-      writeBlock(gMotionModal.format(1), f);
+      writeBlock(gFeedModeModal.format(fmode), gMotionModal.format(1), f);
     }
   }
 }
 
 function onRapid5D(_x, _y, _z, _a, _b, _c) {
+  if (!currentSection.isOptimizedForMachine()) {
+    error(localize("This post configuration has not been customized for 5-axis simultaneous toolpath."));
+    return;
+  }
   if (pendingRadiusCompensation >= 0) {
     error(localize("Radius compensation mode cannot be changed at rapid traversal."));
     return;
@@ -883,9 +1011,14 @@ function onRapid5D(_x, _y, _z, _a, _b, _c) {
   var c = cOutput.format(_c);
   writeBlock(gMotionModal.format(0), x, y, z, a, b, c);
   feedOutput.reset();
+  previousABC = new Vector(_a, _b, _c);
 }
 
 function onLinear5D(_x, _y, _z, _a, _b, _c, feed) {
+  if (!currentSection.isOptimizedForMachine()) {
+    error(localize("This post configuration has not been customized for 5-axis simultaneous toolpath."));
+    return;
+  }
   if (pendingRadiusCompensation >= 0) {
     error(localize("Radius compensation cannot be activated/deactivated for 5-axis move."));
     return;
@@ -896,15 +1029,86 @@ function onLinear5D(_x, _y, _z, _a, _b, _c, feed) {
   var a = aOutput.format(_a);
   var b = bOutput.format(_b);
   var c = cOutput.format(_c);
-  var f = feedOutput.format(feed);
+
+  // Calculate Inverse Time Feed Rates
+  var f;
+  var fmode;
+  if (a || b || c) {
+    var length = getMoveLength(_x, _y, _z, _a, _b, _c, false);
+    var inverseTime = getInverseTime(length, feed);
+    f = inverseTimeOutput.format(inverseTime);
+    fmode = 93;
+    feedOutput.reset();
+  } else {
+    f = feedOutput.format(feed);
+    fmode = 94;
+  }
+
   if (x || y || z || a || b || c) {
-    writeBlock(gMotionModal.format(1), x, y, z, a, b, c, f);
+    writeBlock(gFeedModeModal.format(fmode), gMotionModal.format(1), x, y, z, a, b, c, f);
   } else if (f) {
     if (getNextRecord().isMotion()) { // try not to output feed without motion
       feedOutput.reset(); // force feed on next line
     } else {
-      writeBlock(gMotionModal.format(1), f);
+      writeBlock(gFeedModeModal.format(fmode), gMotionModal.format(1), f);
     }
+  }
+  previousABC = new Vector(_a, _b, _c);
+}
+
+function getMoveLength(_x, _y, _z, _a, _b, _c, _tcpMode) {
+  // get starting and ending positions
+  var startTool;
+  var endTool;
+  var startXYZ;
+  var endXYZ;
+  var startABC = previousABC;
+  var endABC = new Vector(_a, _b, _c);
+  if (_tcpMode) {
+    startTool = getCurrentPosition();
+    endTool = new Vector(_x, _y, _z);
+    startXYZ = machineConfiguration.getOrientation(startABC).getTransposed().multiply(startTool);
+    endXYZ = machineConfiguration.getOrientation(endABC).getTransposed().multiply(endTool);
+  } else {
+    startXYZ = getCurrentPosition();
+    endXYZ = new Vector(_x, _y, _z);
+    startTool = machineConfiguration.getOrientation(startABC).multiply(startXYZ);
+    endTool = machineConfiguration.getOrientation(endABC).multiply(endXYZ);
+  }
+
+  // calculate the radial portion of the move
+  var workStart = new Array(startTool.x, startTool.y, startTool.z);
+  var workEnd = new Array(endTool.x, endTool.y, endTool.z);
+  workStart[masterAxis] = 0;
+  workEnd[masterAxis] = 0;
+  var startRadius = new Vector(workStart[0], workStart[1], workStart[2]).length;
+  var endRadius = new Vector(workEnd[0], workEnd[1], workEnd[2]).length;
+  var radius = Math.max(startRadius, endRadius);
+  var deltaABC = Vector.diff(endABC, startABC).length;
+  if (deltaABC > Math.PI) {
+    deltaABC = 2*Math.PI - deltaABC;
+  }
+  var radialLength = (2 * Math.PI * radius) * (deltaABC / (2 * Math.PI));
+  
+  // calculate the move distance based on a combination of linear and rotary axes movement
+  var linearLength = Vector.diff(endXYZ, startXYZ).length;
+  var moveLength = linearLength + radialLength;
+  return moveLength;
+}
+
+function getInverseTime(_length, _feed) {
+  if (_feed <= 0) {
+    error(localize("Feedrate is less than or equal to 0."));
+    return 0;
+  }
+  if (_length < 1.e-6) {
+    return maxInverseTime;
+  } else {
+    var inverseTime = _feed / _length; // length is the tip distance
+    if (inverseTime > maxInverseTime) { // TAG: limit given by CNC control
+      inverseTime = maxInverseTime;
+    }
+    return inverseTime; // unit in 1/min
   }
 }
 
@@ -1016,44 +1220,29 @@ function onSectionEnd() {
 
   forceAny();
   
-   var initialPosition = getFramePosition(currentSection.getInitialPosition());
-    writeBlock( 
-	 // zOutput.format(initialPosition.z), 
-	  mFormat.format(5), 
-	  mFormat.format(9)
-	);
+  if (((getCurrentSectionId() + 1) >= getNumberOfSections()) ||
+      (tool.number != getNextSection().getTool().number)) {
+    writeBlock(
+      mFormat.format(5),
+      mFormat.format(9)
+    );
+  }
 }
 
 function onClose() {
   writeln("");
 
-  //onCommand(COMMAND_COOLANT_OFF);
+  // onCommand(COMMAND_COOLANT_OFF);
 
-/*  if (properties.useG28) {
-    writeBlock(gFormat.format(28), gAbsIncModal.format(91), "Z" + xyzFormat.format(0)); // retract
-    zOutput.reset();
-  }
-  */
-  zOutput.reset();
   setWorkPlane(new Vector(0, 0, 0)); // reset working plane
 
- /* if (properties.useG28 && !machineConfiguration.hasHomePositionX() && !machineConfiguration.hasHomePositionY()) {
-    writeBlock(gFormat.format(28), gAbsIncModal.format(91), "X" + xyzFormat.format(0), "Y" + xyzFormat.format(0)); // return to home
-  } else {
-    var homeX;
-    if (machineConfiguration.hasHomePositionX()) {
-      homeX = "X" + xyzFormat.format(machineConfiguration.getHomePositionX());
-    }
-    var homeY;
-    if (machineConfiguration.hasHomePositionY()) {
-      homeY = "Y" + xyzFormat.format(machineConfiguration.getHomePositionY());
-    }
-    writeBlock(gAbsIncModal.format(90), gFormat.format(53), gMotionModal.format(0), homeX, homeY);
+  if (properties.useG30) {
+    writeBlock(gFormat.format(30));
+    zOutput.reset();
   }
-*/
+
   onImpliedCommand(COMMAND_END);
   onImpliedCommand(COMMAND_STOP_SPINDLE);
-  writeBlock(gFormat.format(30));
   writeBlock(mFormat.format(30)); // stop program, spindle stop, coolant off
   writeln("%");
 }
