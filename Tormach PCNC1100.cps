@@ -20,6 +20,8 @@ Autodesk/Tormach change log:
 3/5/2016	Changed description for Tormach milling post to include PathPilot.
 12/15/2015	Updated relevant generic posts to force work offset at tool changes to allow restart of NC program at the tool changes.
 
+SRG Change Log
+2/18/17 - Added F20. to onClose(). I added so I don't have to check federate before using probe
 
 */
 
@@ -1233,6 +1235,8 @@ function onClose() {
   writeln("");
 
   // onCommand(COMMAND_COOLANT_OFF);
+  
+  writeBlock(gFeedModeModal.format(01), ("F"+"20.")); // SRG - sets feed to 20, added so I wouldn't have to check feed before using probe
 
   setWorkPlane(new Vector(0, 0, 0)); // reset working plane
 
