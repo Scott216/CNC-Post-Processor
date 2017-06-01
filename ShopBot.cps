@@ -1,44 +1,28 @@
 /**
-  Copyright (C) 2012-2016 by Autodesk, Inc.
+  Copyright (C) 2012-2017 by Autodesk, Inc.
   All rights reserved.
 
   ShopBot OpenSBP post processor configuration.
 
-  $Revision: 41257 31036fb391fa0902161d3ae6871c3c40ab5ad79b $
-  $Date: 2016-12-15 20:35:22 $
+  $Revision: 41430 5f288c765a6f29876ba3475ec3ab13d6f7fd7747 $
+  $Date: 2017-05-17 17:47:04 $
   
   FORKID {866F31A2-119D-485c-B228-090CC89C9BE8}
-
-Change Log:
-12/15/2016	Updated multi-axis support for Shopbot OpenSBP post.
-12/15/2016	Added new property 'SB3v36' to control tool changes for Shopbot OpenSBP post.
-8/4/2016	Updated spindle speed warning for generic Shopbot post.
-8/3/2016	Changed error to warning for low spindle speed for generic Shopbot post.
-6/29/2016	Updated feed handling such that feed is limited when moving along Z for Handibot/Shopbot posts.
-5/12/2016	Fixed multi-axis support for generic Shopbot/Handibot posts.
-5/12/2016	Added C9 macro call at tool change for generic Shopbot/Handibot posts.
-1/15/2016	Fixed missing formatting for generic Shopbot post.
-12/18/2015	Fixed generic ShopBot post.
-8/27/2015	Added more decimals for feed output for the generic Shopbot OpenSBP post.
-8/26/2015	Major update of the generic Shopbot post. Added new properties to select 5-axis and 4-axis machines.
-10/19/2014	Updated multi-axis support for generic ShopBot OpenSBP post.
-1/21/2014	Updated generic Shopbot post.
-
 */
 
 description = "ShopBot OpenSBP";
 vendor = "ShopBot Tools";
 vendorUrl = "http://www.shopbottools.com";
-legal = "Copyright (C) 2012-2016 by Autodesk, Inc.";
+legal = "Copyright (C) 2012-2017 by Autodesk, Inc.";
 certificationLevel = 2;
 minimumRevision = 24000;
 
 longDescription = "Generic post for the Shopbot OpenSBP format with support for both manual and automatic tool changes. By default the post operates in 3-axis mode. For a 5-axis tool set the 'fiveAxis' property to Yes. 5-axis users must set the 'gaugeLength' property in inches before cutting which can be calculated through the tool's calibration macro. For a 4-axis tool set the 'fourAxis' property to YES. For 4-axis mode, the B-axis will turn around the X-axis by default. For the Y-axis configurations set the 'bAxisTurnsAroundX' property to NO. Users running older versions of SB3 - V3.5 or earlier should set the 'SB3v36' property to NO.";
 
-capabilities = CAPABILITY_MILLING;
 extension = "sbp";
 setCodePage("ascii");
 
+capabilities = CAPABILITY_MILLING;
 tolerance = spatial(0.002, MM);
 
 minimumChordLength = spatial(0.01, MM);
@@ -233,16 +217,15 @@ function forceWorkPlane() {
 }
 
 function setWorkPlane(abc) {
-  var retracted = false;
   if (!machineConfiguration.isMultiAxisConfiguration()) {
-    return retracted; // ignore
+    return true; // ignore
   }
 
   if (!((currentWorkPlaneABC == undefined) ||
         abcFormat.areDifferent(abc.x, currentWorkPlaneABC.x) ||
         abcFormat.areDifferent(abc.y, currentWorkPlaneABC.y) ||
         abcFormat.areDifferent(abc.z, currentWorkPlaneABC.z))) {
-    return retracted; // no change
+    return false; // no change
   }
 
   // retract to safe plane
@@ -253,7 +236,6 @@ function setWorkPlane(abc) {
 
   // move XY to home position
   writeBlock("JH");
-  retracted = true;
 
   writeBlock(
     "J5",
