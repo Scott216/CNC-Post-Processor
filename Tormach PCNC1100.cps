@@ -1,34 +1,19 @@
 /**
-  Copyright (C) 2012-2016 by Autodesk, Inc.
+  Copyright (C) 2012-2017 by Autodesk, Inc.
   All rights reserved.
 
   Tormach PathPilot / Mach3Mill post processor configuration.
 
-  $Revision: 41275 65a55801602ffd7914cb2ea10935cd9f39fce6c6 $
-  $Date: 2017-01-14 20:39:34 $
+  $Revision: 41445 cbe3aaf0320616e8b3a4dbcc5a00a3f071246e74 $
+  $Date: 2017-05-26 16:41:40 $
   
   FORKID {AE2102AB-B86A-4aa7-8E9B-F0B6935D4E9F}
-
-
-Autodesk/Tormach change log:
-1/14/2017	Only allow up to 90deg sweeps for G2/G3 moves when using R-word (radius) instead of IJK-words (center) to avoid problems on some CNCs where the center could potentially drift significantly for a correct NC program and hence result in wrong machining. The problem can be exposed when cutting around 180deg arcs on some CNCs. If a particular CNC does not have a such a problem the post can be customized to allow bigger arcs. IJK-mode remains unchanged and is recommended over using R-word.
-1/6/2017	Fixed inverse time support for Tormach post.
-10/19/2016	Added support for multi-axis toolpath and SmartCool for Tormach PathPilot post.
-10/19/2016	Switched to using G30 instead of G28 for Tormach PathPilot post.
-6/6/2016	Added optional dwell for high spindle speed for generic Tormach post.
-6/6/2016	Always force coolant off before tool change for generic Tormach post.
-3/5/2016	Changed description for Tormach milling post to include PathPilot.
-12/15/2015	Updated relevant generic posts to force work offset at tool changes to allow restart of NC program at the tool changes.
-
-SRG Change Log
-2/18/17 - Added F20. to onClose(). I added so I don't have to check federate before using probe
-
 */
 
 description = "Generic Tormach PathPilot";
 vendor = "Tormach";
 vendorUrl = "http://www.tormach.com";
-legal = "Copyright (C) 2012-2016 by Autodesk, Inc.";
+legal = "Copyright (C) 2012-2017 by Autodesk, Inc.";
 certificationLevel = 2;
 minimumRevision = 24000;
 
@@ -37,6 +22,7 @@ longDescription = "Tormach PathPilot post for 3-axis and 4-axis milling with Sma
 extension = "nc";
 setCodePage("ascii");
 
+capabilities = CAPABILITY_MILLING;
 tolerance = spatial(0.002, MM);
 
 minimumChordLength = spatial(0.01, MM);
@@ -299,6 +285,15 @@ function onOpen() {
             return;
           }
         }
+      }
+    }
+  }
+
+  if ((getNumberOfSections() > 0) && (getSection(0).workOffset == 0)) {
+    for (var i = 0; i < getNumberOfSections(); ++i) {
+      if (getSection(i).workOffset > 0) {
+        error(localize("Using multiple work offsets is not possible if the initial work offset is 0."));
+        return;
       }
     }
   }
@@ -576,11 +571,12 @@ function onSection() {
   if (workOffset > 0) {
     if (workOffset > 6) {
       var p = workOffset; // 1->... // G59 P1 is the same as G54 and so on
-      if (p > 254) {
+      if (p > 9) {
         error(localize("Work offset out of range."));
       } else {
         if (workOffset != currentWorkOffset) {
-          writeBlock(gFormat.format(59), "P" + p); // G59 P
+          p = 59 + ((p - 6)/10.0);
+          writeBlock(gFormat.format(p)); // G59.x
           currentWorkOffset = workOffset;
         }
       }
@@ -1032,7 +1028,7 @@ function onLinear5D(_x, _y, _z, _a, _b, _c, feed) {
   var b = bOutput.format(_b);
   var c = cOutput.format(_c);
 
-  // Calculate Inverse Time Feed Rates
+  // Calculate Inverse Time Feedrates
   var f;
   var fmode;
   if (a || b || c) {
@@ -1235,8 +1231,6 @@ function onClose() {
   writeln("");
 
   // onCommand(COMMAND_COOLANT_OFF);
-  
-  writeBlock(gFeedModeModal.format(01), ("F"+"20.")); // SRG - sets feed to 20, added so I wouldn't have to check feed before using probe
 
   setWorkPlane(new Vector(0, 0, 0)); // reset working plane
 
