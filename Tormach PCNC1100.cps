@@ -4,8 +4,8 @@
 
   Tormach PathPilot / Mach3Mill post processor configuration.
 
-  $Revision: 41497 c799a87da7db6e20a94fac9703585207c8f8c42b $
-  $Date: 2017-07-17 12:39:00 $
+  $Revision: 41528 12e147b5eb5527b112801dbabf8ca4881d36d8ae $
+  $Date: 2017-08-16 16:09:44 $
   
   FORKID {AE2102AB-B86A-4aa7-8E9B-F0B6935D4E9F}
 */
@@ -51,7 +51,7 @@ properties = {
   useRadius: false, // specifies that arcs should be output using the radius (R word) instead of the I, J, and K words.
   dwellInSeconds: true, // specifies the unit for dwelling: true:seconds and false:milliseconds.
   forceWorkOffset: false, // forces the work offset code at tool changes
-  rotaryTableAxis: "None", // None, X, Y, Z, -X, -Y, -Z
+  rotaryTableAxis: "none", // none, X, Y, Z, -X, -Y, -Z
   smartCoolEquipped: false, // machine has smart coolant attachment
   smartCoolToolSweepPercentage: 100 // tool length percentage to sweep coolant
 };
