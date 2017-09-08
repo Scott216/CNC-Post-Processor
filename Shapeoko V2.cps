@@ -5,21 +5,23 @@
 Change Log
 v1.10 04/24/15 - commented out G28 (retract to safe plane) because it doesn't work on shapeoko
                  Added z-axis move to initial position, which is the clearance height
-v1.20 04/27/15 - moved work coordinate line so it's before the first z-exis move and prints comment if G55 or higher.  
+v1.20 04/27/15 - moved work coordinate line so it's before the first z-axis move and prints comment if G55 or higher.  
 	         Added comments to G20/G21 
-v1.30 05/13/15 - Commented out tool change code "Tx M6" bacause Shapeoko+GRBL doesn't support M6 pause used in a tool change
+v1.30 05/13/15 - Commented out tool change code "Tx M6" because Shapeoko+GRBL doesn't support M6 pause used in a tool change
                  Changed code so description, vendor and model are printed out in comments.  Added some blank lines and sectin headers
 	         Added Post Processor version number, vv_ver
 v1.31 08/11/15 - Modified onCircular() so it would be more precise on G2/G3 moves.  If error is greater then 0.005" GRBL will generate an error. 
                  See: https://camforum.autodesk.com/index.php?topic=7571
                       https://github.com/vlachoudis/bCNC/issues/88#issuecomment-129568125
+v1.32 09/08/17 - Autodesk made some changes that I added in.  Checked for multiple work offsets, 
 
 */
 
-var pp_ver = "1.31";     // Added by SRG
+
+var pp_ver = "1.32”;     // Added by SRG
 vendor = "Inventables";
 model = "Shapeoko 2";    // Added by SRG
-description = "descktop CNC router";
+description = “Desktop CNC Router";
 vendorUrl = "http://www.shapeoko.com/";
 legal = "Copyright (C) 2012-2014 by Autodesk, Inc.";
 certificationLevel = 2;
@@ -192,6 +194,16 @@ function onOpen() {
   }
 
   writeln(" ");  // SRG - added blank line
+
+  // Check for multiple work offsets
+  if ((getNumberOfSections() > 0) && (getSection(0).workOffset == 0)) {
+    for (var i = 0; i < getNumberOfSections(); ++i) {
+      if (getSection(i).workOffset > 0) {
+        error(localize("Using multiple work offsets is not possible if the initial work offset is 0."));
+        return;
+      }
+    }
+  }
 
   // absolute coordinates and feed per min
   writeBlock(gAbsIncModal.format(90), gFeedModeModal.format(94));
