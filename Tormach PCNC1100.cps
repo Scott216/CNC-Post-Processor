@@ -4,13 +4,13 @@
 
   Tormach PathPilot / Mach3Mill post processor configuration.
 
-  $Revision: 41528 12e147b5eb5527b112801dbabf8ca4881d36d8ae $
-  $Date: 2017-08-16 16:09:44 $
+  $Revision: 41586 fa308533b5ce0911a1c8cc623da1f06215decf25 $
+  $Date: 2017-09-07 11:11:03 $
   
   FORKID {AE2102AB-B86A-4aa7-8E9B-F0B6935D4E9F}
 */
 
-description = "Generic Tormach PathPilot";
+description = "Tormach PathPilot";
 vendor = "Tormach";
 vendorUrl = "http://www.tormach.com";
 legal = "Copyright (C) 2012-2017 by Autodesk, Inc.";
@@ -54,6 +54,23 @@ properties = {
   rotaryTableAxis: "none", // none, X, Y, Z, -X, -Y, -Z
   smartCoolEquipped: false, // machine has smart coolant attachment
   smartCoolToolSweepPercentage: 100 // tool length percentage to sweep coolant
+};
+
+propertyDefinitions = {
+  rotaryTableAxis: {
+    title: "Rotary table axis",
+    description: "Selects the rotary table axis orientation.",
+    type: "enum",
+    values:[
+      {title:"No rotary", id:"none"},
+      {title:"Along +X", id:"x"},
+      {title:"Along +Y", id:"y"},
+      {title:"Along +Z", id:"z"},
+      {title:"Along -X", id:"-x"},
+      {title:"Along -Y", id:"-y"},
+      {title:"Along -Z", id:"-z"}
+    ]
+  }
 };
 
 
