@@ -4,8 +4,8 @@
 
   Tormach PathPilot / Mach3Mill post processor configuration.
 
-  $Revision: 41586 fa308533b5ce0911a1c8cc623da1f06215decf25 $
-  $Date: 2017-09-07 11:11:03 $
+  $Revision: 41604 711c8bb403637ee496d09355bb9eb1fa2efddb96 $
+  $Date: 2017-09-14 13:23:33 $
   
   FORKID {AE2102AB-B86A-4aa7-8E9B-F0B6935D4E9F}
 */
@@ -56,7 +56,22 @@ properties = {
   smartCoolToolSweepPercentage: 100 // tool length percentage to sweep coolant
 };
 
+// user-defined property definitions
 propertyDefinitions = {
+  writeMachine: {title:"Write machine", description:"Output the machine settings in the header of the code.", group:0, type:"boolean"},
+  writeTools: {title:"Write tool list", description:"Output a tool list in the header of the code.", group:0, type:"boolean"},
+  writeVersion: {title:"Write version", description:"Write the version number in the header of the code.", group:0, type:"boolean"},
+  useG30: {title:"Use G30", description:"Use G30 instead of G28.", type:"boolean"},
+  useM6: {title:"Use M6", description:"Disable to avoid outputting M6. If disabled Preload is also disabled", group:1, type:"boolean"},
+  preloadTool: {title:"Preload tool", description:"Preloads the next tool at a tool change (if any).", group:1, type:"boolean"},
+  showSequenceNumbers: {title:"Use sequence numbers", description:"Use sequence numbers for each block of outputted code.", group:1, type:"boolean"},
+  sequenceNumberStart: {title:"Start sequence number", description:"The number at which to start the sequence numbers.", group:1, type:"integer"},
+  sequenceNumberIncrement: {title:"Sequence number increment", description:"The amount by which the sequence number is incremented by in each block.", group:1, type:"integer"},
+  optionalStop: {title:"Optional stop", description:"Outputs optional stop code during when necessary in the code.", type:"boolean"},
+  separateWordsWithSpace: {title:"Separate words with space", description:"Adds spaces between words if 'yes' is selected.", type:"boolean"},
+  useRadius: {title:"Radius arcs", description:"If yes is selected, arcs are outputted using radius values rather than IJK.", type:"boolean"},
+  dwellInSeconds: {title:"Dwell in seconds", description:"Specifies the unit for dwelling, set to 'Yes' for seconds and 'No' for milliseconds.", type:"boolean"},
+  forceWorkOffset: {title:"Force work offset", description:"Forces the work offset code at tool changes.", type:"boolean"},
   rotaryTableAxis: {
     title: "Rotary table axis",
     description: "Selects the rotary table axis orientation.",
@@ -70,7 +85,9 @@ propertyDefinitions = {
       {title:"Along -Y", id:"-y"},
       {title:"Along -Z", id:"-z"}
     ]
-  }
+  },
+  smartCoolEquipped: {title:"Smart cool equipped", description:"Specifies if the machine has a smart coolant attachment.", type:"boolean"},
+  smartCoolToolSweepPercentage: {title:"Smart cool sweep percentage", description:"Sets the tool length percentage to sweep coolant.", type:"number"}
 };
 
 
