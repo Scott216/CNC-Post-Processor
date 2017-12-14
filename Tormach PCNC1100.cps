@@ -4,8 +4,8 @@
 
   Tormach PathPilot / Mach3Mill post processor configuration.
 
-  $Revision: 41604 711c8bb403637ee496d09355bb9eb1fa2efddb96 $
-  $Date: 2017-09-14 13:23:33 $
+  $Revision: 41742 92fed5b27e9bf4411dfd648a6d8489c28e500f65 $
+  $Date: 2017-12-13 19:05:40 $
   
   FORKID {AE2102AB-B86A-4aa7-8E9B-F0B6935D4E9F}
 */
@@ -1118,8 +1118,8 @@ function getMultiaxisFeed(_x, _y, _z, _a, _b, _c, feed) {
 function getFeedDPM(_moveLength, _feed) {
   // moveLength[0] = Tool tip, [1] = XYZ, [2] = ABC
 
-  if (false) { // TCP mode is supported, output feed as FPM
-    return feed;
+  if (currentSection.getOptimizedTCPMode() == 0) { // TCP mode is supported, output feed as FPM
+    return _feed;
   } else { // DPM feedrate calculation
     var moveTime = ((_moveLength[0] < 1.e-6) ? 0.001 : _moveLength[0]) / _feed;
     var length = Math.sqrt(Math.pow(_moveLength[1], 2.0) + Math.pow((toDeg(_moveLength[2]) * dpmBPW), 2.0));
@@ -1233,8 +1233,11 @@ function getMoveLength(_x, _y, _z, _a, _b, _c) {
   moveLength[0] = linearLength + radialLength;
   moveLength[1] = Vector.diff(endXYZ, startXYZ).length;
   moveLength[2] = 0;
+
+  var start = new Array(startABC.x, startABC.y, startABC.z);
+  var end = new Array(endABC.x, endABC.y, endABC.z);
   for (var i = 0; i < 3; ++i) {
-    var delta = Math.abs(endABC[i] - startABC[i]);
+    var delta = Math.abs(end[i] - start[i]);
     if (delta > Math.PI) {
       delta = 2 * Math.PI - delta;
     }
