@@ -4,8 +4,8 @@
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 41854 00464c6782637be91a4bb1521baa89e0a070d3c7 $
-  $Date: 2018-02-17 00:02:41 $
+  $Revision: 41967 cbbe75abccc687df9b6228c87bf433c121fa2042 $
+  $Date: 2018-05-07 11:30:32 $
   
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
@@ -25,7 +25,7 @@ setCodePage("ascii");
 capabilities = CAPABILITY_MILLING;
 tolerance = spatial(0.002, MM);
 
-minimumChordLength = spatial(0.01, MM);
+minimumChordLength = spatial(0.25, MM);
 minimumCircularRadius = spatial(0.01, MM);
 maximumCircularRadius = spatial(1000, MM);
 minimumCircularSweep = toRad(0.01);
@@ -128,7 +128,7 @@ var qFormat = createFormat({prefix:"Q", decimals:0});
 
 var xOutput = createVariable({prefix:"X"}, xyzFormat);
 var yOutput = createVariable({prefix:"Y"}, xyzFormat);
-var zOutput = createVariable({prefix:"Z"}, xyzFormat);
+var zOutput = createVariable({onchange:function () {retracted = false;}, prefix:"Z"}, xyzFormat);
 var aOutput = createVariable({prefix:"A"}, abcFormat);
 var bOutput = createVariable({prefix:"B"}, abcFormat);
 var cOutput = createVariable({prefix:"C"}, abcFormat);
@@ -159,6 +159,7 @@ var previousCoolantMode;
 var coolantZHeight;
 var masterAxis;
 var movementType;
+var retracted = false; // specifies that the tool has been retracted to the safe plane
 
 function formatSequenceNumber() {
   if (sequenceNumber > 99999) {
@@ -173,6 +174,9 @@ function formatSequenceNumber() {
   Writes the specified block.
 */
 function writeBlock() {
+  if (!formatWords(arguments)) {
+    return;
+  }
   if (properties.showSequenceNumbers) {
     writeWords2(formatSequenceNumber(), arguments);
     sequenceNumber += properties.sequenceNumberIncrement;
@@ -406,6 +410,7 @@ function forceABC() {
 function forceAny() {
   forceXYZ();
   forceABC();
+  previousDPMFeed = 0;
   feedOutput.reset();
 }
 
@@ -487,6 +492,7 @@ function getWorkPlaneMachineABC(workPlane) {
   }
 
   var tcp = false;
+  cancelTransformation();
   if (tcp) {
     setRotation(W); // TCP mode
   } else {
@@ -516,19 +522,18 @@ function onSection() {
     currentSection.getForceToolChange && currentSection.getForceToolChange() ||
     (tool.number != getPreviousSection().getTool().number);
   
-  var retracted = false; // specifies that the tool has been retracted to the safe plane
+  retracted = false; // specifies that the tool has been retracted to the safe plane
   var newWorkOffset = isFirstSection() ||
     (getPreviousSection().workOffset != currentSection.workOffset); // work offset changes
   var newWorkPlane = isFirstSection() ||
-    !isSameDirection(getPreviousSection().getGlobalFinalToolAxis(), currentSection.getGlobalInitialToolAxis());
+    !isSameDirection(getPreviousSection().getGlobalFinalToolAxis(), currentSection.getGlobalInitialToolAxis()) ||
+    (currentSection.isOptimizedForMachine() && getPreviousSection().isOptimizedForMachine() &&
+      Vector.diff(getPreviousSection().getFinalToolAxisABC(), currentSection.getInitialToolAxisABC()).length > 1e-4) ||
+    (!machineConfiguration.isMultiAxisConfiguration() && currentSection.isMultiAxis()) ||
+    (!getPreviousSection().isMultiAxis() && currentSection.isMultiAxis() ||
+      getPreviousSection().isMultiAxis() && !currentSection.isMultiAxis()); // force newWorkPlane between indexing and simultaneous operations
   if (insertToolCall || newWorkOffset || newWorkPlane) {
-    if (properties.useG30) {
-      // retract to safe plane
-      retracted = true;
-      writeBlock(gFormat.format(30)); // retract
-      writeBlock(gAbsIncModal.format(90));
-      zOutput.reset();
-    }
+    writeRetract(Z);
     forceWorkPlane();
   }
   writeln("");
@@ -681,7 +686,7 @@ function onSection() {
   gMotionModal.reset();
 
   var initialPosition = getFramePosition(currentSection.getInitialPosition());
-  if (!retracted) {
+  if (!retracted && !insertToolCall) {
     if (getCurrentPosition().z < initialPosition.z) {
       writeBlock(gMotionModal.format(0), zOutput.format(initialPosition.z));
     }
@@ -1149,6 +1154,7 @@ function onLinear5D(_x, _y, _z, _a, _b, _c, feed) {
   var f = {frn:0, fmode:0};
   if (a || b || c) {
     f = getMultiaxisFeed(_x, _y, _z, _a, _b, _c, feed);
+    f.frn = inverseTimeOutput.format(f.frn);
   } else {
     f.frn = feedOutput.format(feed);
     f.fmode = 94;
@@ -1167,12 +1173,19 @@ function onLinear5D(_x, _y, _z, _a, _b, _c, feed) {
 
 // Start of multi-axis feedrate logic
 /***** Be sure to add 'useInverseTime' to post properties if necessary. *****/
-/***** 'inverseTimeOutput' must be defined. *****/
+/***** 'inverseTimeOutput' should be defined if Inverse Time feedrates are supported. *****/
+/***** 'previousABC' can be added throughout to maintain previous rotary positions. Required for Mill/Turn machines. *****/
 /***** 'headOffset' should be defined when a head rotary axis is defined. *****/
-/***** The feedrate mode must be included in motion block output (linear, circular, etc. *****/
+/***** The feedrate mode must be included in motion block output (linear, circular, etc.) for Inverse Time feedrate support. *****/
 var dpmBPW = 0.1; // ratio of rotary accuracy to linear accuracy for DPM calculations
 var inverseTimeUnits = 1.0; // 1.0 = minutes, 60.0 = seconds
 var maxInverseTime = 99999.9999; // maximum value to output for Inverse Time feeds
+var maxDPM = 9999.99; // maximum value to output for DPM feeds
+var useInverseTimeFeed = true; // use 1/T feeds
+var previousDPMFeed = 0; // previously output DPM feed
+var dpmFeedToler = 0.5; // tolerance to determine when the DPM feed has changed
+// var previousABC = new Vector(0, 0, 0); // previous ABC position if maintained in post, don't define if not used
+var forceOptimized = undefined; // used to override optimized-for-angles points (XZC-mode)
 
 /** Calculate the multi-axis feedrate number. */
 function getMultiaxisFeed(_x, _y, _z, _a, _b, _c, feed) {
@@ -1181,31 +1194,61 @@ function getMultiaxisFeed(_x, _y, _z, _a, _b, _c, feed) {
     error(localize("Feedrate is less than or equal to 0."));
     return f;
   }
-
+  
   var length = getMoveLength(_x, _y, _z, _a, _b, _c);
-
-  if (true) { // inverse time
-    f.frn = inverseTimeOutput.format(getInverseTime(length[0], feed));
+  
+  if (useInverseTimeFeed) { // inverse time
+    f.frn = getInverseTime(length.tool, feed);
     f.fmode = 93;
     feedOutput.reset();
   } else { // degrees per minute
-    f.frn = feedOutput.format(getFeedDPM(length, feed));
+    f.frn = getFeedDPM(length, feed);
     f.fmode = 94;
   }
   return f;
 }
 
+/** Returns point optimization mode. */
+function getOptimizedMode() {
+  if (forceOptimized != undefined) {
+    return forceOptimized;
+  }
+  // return (currentSection.getOptimizedTCPMode() != 0); // TAG:doesn't return correct value
+  return true; // always return false for non-TCP based heads
+}
+  
 /** Calculate the DPM feedrate number. */
 function getFeedDPM(_moveLength, _feed) {
-  // moveLength[0] = Tool tip, [1] = XYZ, [2] = ABC
-
-  if (currentSection.getOptimizedTCPMode() == 0) { // TCP mode is supported, output feed as FPM
+  if ((_feed == 0) || (_moveLength.tool < 0.0001) || (toDeg(_moveLength.abcLength) < 0.0005)) {
+    previousDPMFeed = 0;
     return _feed;
-  } else { // DPM feedrate calculation
-    var moveTime = ((_moveLength[0] < 1.e-6) ? 0.001 : _moveLength[0]) / _feed;
-    var length = Math.sqrt(Math.pow(_moveLength[1], 2.0) + Math.pow((toDeg(_moveLength[2]) * dpmBPW), 2.0));
-    return length / moveTime;
   }
+  var moveTime = _moveLength.tool / _feed;
+  if (moveTime == 0) {
+    previousDPMFeed = 0;
+    return _feed;
+  }
+
+  var dpmFeed;
+  var tcp = false; // !getOptimizedMode() && (forceOptimized == undefined);   // set to false for rotary heads
+  if (tcp) { // TCP mode is supported, output feed as FPM
+    dpmFeed = _feed;
+  } else if (false) { // standard DPM
+    dpmFeed = Math.min(toDeg(_moveLength.abcLength) / moveTime, maxDPM);
+    if (Math.abs(dpmFeed - previousDPMFeed) < dpmFeedToler) {
+      dpmFeed = previousDPMFeed;
+    }
+  } else if (true) { // combination FPM/DPM
+    var length = Math.sqrt(Math.pow(_moveLength.xyzLength, 2.0) + Math.pow((toDeg(_moveLength.abcLength) * dpmBPW), 2.0));
+    dpmFeed = Math.min((length / moveTime), maxDPM);
+    if (Math.abs(dpmFeed - previousDPMFeed) < dpmFeedToler) {
+      dpmFeed = previousDPMFeed;
+    }
+  } else { // machine specific calculation
+    dpmFeed = _feed;
+  }
+  previousDPMFeed = dpmFeed;
+  return dpmFeed;
 }
 
 /** Calculate the Inverse time feedrate number. */
@@ -1228,29 +1271,33 @@ function getInverseTime(_length, _feed) {
   return inverseTime;
 }
 
-/** Calculate the distance of the tool position to the center of a rotary axis. */
-function getRotaryRadius(center, direction, toolPosition) {
-  var normal = direction.getNormalized();
-  var d1 = toolPosition.x - center.x;
-  var d2 = toolPosition.y - center.y;
-  var d3 = toolPosition.z - center.z;
-  var radius = Math.sqrt(
-    Math.pow((d1 * normal.y) - (d2 * normal.x), 2.0) +
-    Math.pow((d2 * normal.z) - (d3 * normal.y), 2.0) +
-    Math.pow((d3 * normal.x) - (d1 * normal.z), 2.0)
-   );
-  return radius;
+/** Calculate radius for each rotary axis. */
+function getRotaryRadii(startTool, endTool, startABC, endABC) {
+  var radii = new Vector(0, 0, 0);
+  var startRadius;
+  var endRadius;
+  var axis = new Array(machineConfiguration.getAxisU(), machineConfiguration.getAxisV(), machineConfiguration.getAxisW());
+  for (var i = 0; i < 3; ++i) {
+    if (axis[i].isEnabled()) {
+      var startRadius = getRotaryRadius(axis[i], startTool, startABC);
+      var endRadius = getRotaryRadius(axis[i], endTool, endABC);
+      radii.setCoordinate(axis[i].getCoordinate(), Math.max(startRadius, endRadius));
+    }
+  }
+  return radii;
 }
 
-/** Calculate the linear distance based on the rotation of a rotary axis. */
-function getRadialDistance(axis, startTool, endTool, startABC, endABC) {
-  // rotary axis does not exist
+/** Calculate the distance of the tool position to the center of a rotary axis. */
+function getRotaryRadius(axis, toolPosition, abc) {
   if (!axis.isEnabled()) {
-    return 0.0;
+    return 0;
   }
 
+  var direction = axis.getEffectiveAxis();
+  var normal = direction.getNormalized();
   // calculate the rotary center based on head/table
   var center;
+  var radius;
   if (axis.isHead()) {
     var pivot;
     if (typeof headOffset === "number") {
@@ -1258,73 +1305,122 @@ function getRadialDistance(axis, startTool, endTool, startABC, endABC) {
     } else {
       pivot = tool.getBodyLength();
     }
-    center = Vector.sum(startTool, Vector.product(machineConfiguration.getSpindleAxis(), pivot));
-    center = Vector.sum(center, axis.getOffset());
+    if (axis.getCoordinate() == machineConfiguration.getAxisU().getCoordinate()) { // rider
+      center = Vector.sum(toolPosition, Vector.product(machineConfiguration.getDirection(abc), pivot));
+      center = Vector.sum(center, axis.getOffset());
+      radius = Vector.diff(toolPosition, center).length;
+    } else { // carrier
+      var angle = abc.getCoordinate(machineConfiguration.getAxisU().getCoordinate());
+      radius = Math.abs(pivot * Math.sin(angle));
+      radius += axis.getOffset().length;
+    }
   } else {
     center = axis.getOffset();
+    var d1 = toolPosition.x - center.x;
+    var d2 = toolPosition.y - center.y;
+    var d3 = toolPosition.z - center.z;
+    var radius = Math.sqrt(
+      Math.pow((d1 * normal.y) - (d2 * normal.x), 2.0) +
+      Math.pow((d2 * normal.z) - (d3 * normal.y), 2.0) +
+      Math.pow((d3 * normal.x) - (d1 * normal.z), 2.0)
+    );
   }
-
-  // calculate the radius of the tool end point compared to the rotary center
-  var startRadius = getRotaryRadius(center, axis.getEffectiveAxis(), startTool);
-  var endRadius = getRotaryRadius(center, axis.getEffectiveAxis(), endTool);
-
+  return radius;
+}
+  
+/** Calculate the linear distance based on the rotation of a rotary axis. */
+function getRadialDistance(radius, startABC, endABC) {
   // calculate length of radial move
-  var radius = Math.max(startRadius, endRadius);
-  var delta = Math.abs(endABC.getCoordinate(axis.getCoordinate()) - startABC.getCoordinate(axis.getCoordinate()));
+  var delta = Math.abs(endABC - startABC);
   if (delta > Math.PI) {
     delta = 2 * Math.PI - delta;
   }
   var radialLength = (2 * Math.PI * radius) * (delta / (2 * Math.PI));
   return radialLength;
 }
-
+  
 /** Calculate tooltip, XYZ, and rotary move lengths. */
 function getMoveLength(_x, _y, _z, _a, _b, _c) {
   // get starting and ending positions
-  var moveLength = new Array();
+  var moveLength = {};
   var startTool;
   var endTool;
   var startXYZ;
   var endXYZ;
-  var startABC = getCurrentDirection();
+  var startABC;
+  if (typeof previousABC !== "undefined") {
+    startABC = new Vector(previousABC.x, previousABC.y, previousABC.z);
+  } else {
+    startABC = getCurrentDirection();
+  }
   var endABC = new Vector(_a, _b, _c);
-  
-  if (currentSection.getOptimizedTCPMode() == 0) {
+    
+  if (!getOptimizedMode()) { // calculate XYZ from tool tip
     startTool = getCurrentPosition();
     endTool = new Vector(_x, _y, _z);
-    startXYZ = machineConfiguration.getOrientation(startABC).getTransposed().multiply(startTool);
-    endXYZ = machineConfiguration.getOrientation(endABC).getTransposed().multiply(endTool);
-  } else {
+    startXYZ = startTool;
+    endXYZ = endTool;
+
+    // adjust points for tables
+    if (!machineConfiguration.getTableABC(startABC).isZero() || !machineConfiguration.getTableABC(endABC).isZero()) {
+      startXYZ = machineConfiguration.getOrientation(machineConfiguration.getTableABC(startABC)).getTransposed().multiply(startXYZ);
+      endXYZ = machineConfiguration.getOrientation(machineConfiguration.getTableABC(endABC)).getTransposed().multiply(endXYZ);
+    }
+
+    // adjust points for heads
+    if (machineConfiguration.getAxisU().isEnabled() && machineConfiguration.getAxisU().isHead()) {
+      if (typeof getOptimizedHeads === "function") { // use post processor function to adjust heads
+        startXYZ = getOptimizedHeads(startXYZ.x, startXYZ.y, startXYZ.z, startABC.x, startABC.y, startABC.z);
+        endXYZ = getOptimizedHeads(endXYZ.x, endXYZ.y, endXYZ.z, endABC.x, endABC.y, endABC.z);
+      } else { // guess at head adjustments
+        var startDisplacement = machineConfiguration.getDirection(startABC);
+        startDisplacement.multiply(headOffset);
+        var endDisplacement = machineConfiguration.getDirection(endABC);
+        endDisplacement.multiply(headOffset);
+        startXYZ = Vector.sum(startTool, startDisplacement);
+        endXYZ = Vector.sum(endTool, endDisplacement);
+      }
+    }
+  } else { // calculate tool tip from XYZ, heads are always programmed in TCP mode, so not handled here
     startXYZ = getCurrentPosition();
     endXYZ = new Vector(_x, _y, _z);
-    startTool = machineConfiguration.getOrientation(startABC).multiply(startXYZ);
-    endTool = machineConfiguration.getOrientation(endABC).multiply(endXYZ);
+    startTool = machineConfiguration.getOrientation(machineConfiguration.getTableABC(startABC)).multiply(startXYZ);
+    endTool = machineConfiguration.getOrientation(machineConfiguration.getTableABC(endABC)).multiply(endXYZ);
   }
 
-  // calculate the radial portion of the move
-  var radialLength = Math.sqrt(
-    Math.pow(getRadialDistance(machineConfiguration.getAxisU(), startTool, endTool, startABC, endABC), 2.0) +
-    Math.pow(getRadialDistance(machineConfiguration.getAxisV(), startTool, endTool, startABC, endABC), 2.0) +
-    Math.pow(getRadialDistance(machineConfiguration.getAxisW(), startTool, endTool, startABC, endABC), 2.0)
-  );
-
-  // calculate the lengths of move
-  // tool tip distance is the move distance based on a combination of linear and rotary axes movement
-  var linearLength = Vector.diff(endXYZ, startXYZ).length;
-  moveLength[0] = linearLength + radialLength;
-  moveLength[1] = Vector.diff(endXYZ, startXYZ).length;
-  moveLength[2] = 0;
-
-  var start = new Array(startABC.x, startABC.y, startABC.z);
-  var end = new Array(endABC.x, endABC.y, endABC.z);
+  // calculate axes movements
+  moveLength.xyz = Vector.diff(endXYZ, startXYZ).abs;
+  moveLength.xyzLength = moveLength.xyz.length;
+  moveLength.abc = Vector.diff(endABC, startABC).abs;
   for (var i = 0; i < 3; ++i) {
-    var delta = Math.abs(end[i] - start[i]);
-    if (delta > Math.PI) {
-      delta = 2 * Math.PI - delta;
+    if (moveLength.abc.getCoordinate(i) > Math.PI) {
+      moveLength.abc.setCoordinate(i, 2 * Math.PI - moveLength.abc.getCoordinate(i));
     }
-    moveLength[2] += Math.pow(delta, 2.0);
   }
-  moveLength[2] = Math.sqrt(moveLength[2]);
+  moveLength.abcLength = moveLength.abc.length;
+
+  // calculate radii
+  moveLength.radius = getRotaryRadii(startTool, endTool, startABC, endABC);
+  
+  // calculate the radial portion of the tool tip movement
+  var radialLength = Math.sqrt(
+    Math.pow(getRadialDistance(moveLength.radius.x, startABC.x, endABC.x), 2.0) +
+    Math.pow(getRadialDistance(moveLength.radius.y, startABC.y, endABC.y), 2.0) +
+    Math.pow(getRadialDistance(moveLength.radius.z, startABC.z, endABC.z), 2.0)
+  );
+  
+  // calculate the tool tip move length
+  // tool tip distance is the move distance based on a combination of linear and rotary axes movement
+  moveLength.tool = moveLength.xyzLength + radialLength;
+
+  // debug
+  if (false) {
+    writeComment("DEBUG - tool   = " + moveLength.tool);
+    writeComment("DEBUG - xyz    = " + moveLength.xyz);
+    var temp = Vector.product(moveLength.abc, 180/Math.PI);
+    writeComment("DEBUG - abc    = " + temp);
+    writeComment("DEBUG - radius = " + moveLength.radius);
+  }
   return moveLength;
 }
 // End of multi-axis feedrate logic
@@ -1463,21 +1559,65 @@ function onSectionEnd() {
   }
 }
 
+/** Output block to do safe retract and/or move to home position. */
+function writeRetract() {
+  if (arguments.length == 0) {
+    error(localize("No axis specified for writeRetract()."));
+    return;
+  }
+  var words = []; // store all retracted axes in an array
+  for (var i = 0; i < arguments.length; ++i) {
+    let instances = 0; // checks for duplicate retract calls
+    for (var j = 0; j < arguments.length; ++j) {
+      if (arguments[i] == arguments[j]) {
+        ++instances;
+      }
+    }
+    if (instances > 1) { // error if there are multiple retract calls for the same axis
+      error(localize("Cannot retract the same axis twice in one line"));
+      return;
+    }
+    switch (arguments[i]) {
+    case X:
+      words.push("X" + xyzFormat.format(machineConfiguration.hasHomePositionX() ? machineConfiguration.getHomePositionX() : 0));
+      break;
+    case Y:
+      words.push("Y" + xyzFormat.format(machineConfiguration.hasHomePositionY() ? machineConfiguration.getHomePositionY() : 0));
+      break;
+    case Z:
+      if (properties.useG30) {
+        writeBlock(gFormat.format(30));
+        writeBlock(gAbsIncModal.format(90));
+        zOutput.reset();
+      }
+      retracted = true; // specifies that the tool has been retracted to the safe plane
+      break;
+    default:
+      error(localize("Bad axis specified for writeRetract()."));
+      return;
+    }
+  }
+  if (words.length > 0) {
+    gMotionModal.reset();
+    if (properties.useG28) {
+      writeBlock(gFormat.format(28));
+      xOutput.reset();
+      yOutput.reset();
+    }
+  }
+  zOutput.reset();
+}
+
 function onClose() {
   writeln("");
 
   // onCommand(COMMAND_COOLANT_OFF);
 
-  if (properties.useG30) {
-    writeBlock(gFormat.format(30));
-    zOutput.reset();
-  }
+  writeRetract(Z);
 
-  if (properties.useG28) {
-    writeBlock(gFormat.format(28));
-    xOutput.reset();
-    yOutput.reset();
-  }
+  writeRetract(X, Y);
+
+
 
   setWorkPlane(new Vector(0, 0, 0)); // reset working plane
 
