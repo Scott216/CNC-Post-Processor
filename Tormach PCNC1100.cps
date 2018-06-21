@@ -4,8 +4,8 @@
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 41967 cbbe75abccc687df9b6228c87bf433c121fa2042 $
-  $Date: 2018-05-07 11:30:32 $
+  $Revision: 42021 eb2fd7350c6a2d9990caebbaf4c00d9c8860c9dc $
+  $Date: 2018-06-19 11:17:03 $
   
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
@@ -856,7 +856,7 @@ function onCyclePoint(x, y, z) {
     // return to initial Z which is clearance plane and set absolute mode
 
     var F = cycle.feedrate;
-    var P = (cycle.dwell == 0) ? 0 : cycle.dwell; // in seconds
+    var P = !cycle.dwell ? 0 : cycle.dwell; // in seconds
 
     // Adjust SmartCool to top of part if it changes
     if (properties.smartCoolEquipped && xyzFormat.areDifferent((z + cycle.depth), coolantZHeight)) {
