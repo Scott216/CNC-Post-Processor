@@ -4,8 +4,8 @@
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 42021 eb2fd7350c6a2d9990caebbaf4c00d9c8860c9dc $
-  $Date: 2018-06-19 11:17:03 $
+  $Revision: 42071 de911d15ab16f0825ccc27d9b231204e8f76c27d $
+  $Date: 2018-08-09 10:29:50 $
   
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
@@ -15,7 +15,7 @@ vendor = "Tormach";
 vendorUrl = "http://www.tormach.com";
 legal = "Copyright (C) 2012-2018 by Autodesk, Inc.";
 certificationLevel = 2;
-minimumRevision = 24000;
+minimumRevision = 40783;
 
 longDescription = "Tormach PathPilot post for 3-axis and 4-axis milling with SmartCool support.";
 
@@ -608,23 +608,23 @@ function onSection() {
   if (true ||
       insertToolCall ||
       isFirstSection() ||
-      (rpmFormat.areDifferent(tool.spindleRPM, sOutput.getCurrent())) ||
+      (rpmFormat.areDifferent(spindleSpeed, sOutput.getCurrent())) ||
       (tool.clockwise != getPreviousSection().getTool().clockwise)) {
-    if (tool.spindleRPM < 0) {
+    if (spindleSpeed < 0) {
       error(localize("Spindle speed out of range."));
       return;
     }
-    if (tool.spindleRPM > 99999) {
+    if (spindleSpeed > 99999) {
       warning(localize("Spindle speed exceeds maximum value."));
     }
-    if (tool.spindleRPM == 0) {
+    if (spindleSpeed == 0) {
       writeBlock(mFormat.format(5), c[0], c[1], c[2], c[3], formatComment("SPINDLE IS OFF"));
     } else {
       writeBlock(
-        sOutput.format(tool.spindleRPM), mFormat.format(tool.clockwise ? 3 : 4),
+        sOutput.format(spindleSpeed), mFormat.format(tool.clockwise ? 3 : 4),
         c[0], c[1], c[2], c[3]
       );
-      if ((tool.spindleRPM > 5000) && properties.waitForSpindle) {
+      if ((spindleSpeed > 5000) && properties.waitForSpindle) {
         onDwell(properties.waitForSpindle);
       }
     }
@@ -903,17 +903,13 @@ function onCyclePoint(x, y, z) {
       }
       break;
     case "deep-drilling":
-      if ((P > 0) || (cycle.accumulatedDepth < cycle.depth)) {
-        expandCyclePoint(x, y, z);
-      } else {
-        writeBlock(
-          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(83),
-          getCommonCycle(x, y, z, cycle.retract),
-          "Q" + xyzFormat.format(cycle.incrementalDepth),
-          // conditional(P > 0, "P" + secFormat.format(P)),
-          feedOutput.format(F)
-        );
-      }
+      writeBlock(
+        gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(83),
+        getCommonCycle(x, y, z, cycle.retract),
+        "Q" + xyzFormat.format(cycle.incrementalDepth),
+        // conditional(P > 0, "P" + secFormat.format(P)),
+        feedOutput.format(F)
+      );
       break;
     case "tapping":
       if (properties.reversingHead) {
@@ -922,7 +918,7 @@ function onCyclePoint(x, y, z) {
         if (!F) {
           F = tool.getTappingFeedrate();
         }
-        writeBlock(sOutput.format(tool.spindleRPM));
+        writeBlock(sOutput.format(spindleSpeed));
         writeBlock(
           gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(84),
           getCommonCycle(x, y, z, cycle.retract),
@@ -1561,51 +1557,100 @@ function onSectionEnd() {
 
 /** Output block to do safe retract and/or move to home position. */
 function writeRetract() {
+  // initialize routine
+  var _xyzMoved = new Array(false, false, false);
+  var _useG28 = properties.useG28; // can be either true or false
+  var _useG30 = properties.useG30; // can be either true or false
+
+  // check syntax of call
   if (arguments.length == 0) {
     error(localize("No axis specified for writeRetract()."));
     return;
   }
-  var words = []; // store all retracted axes in an array
   for (var i = 0; i < arguments.length; ++i) {
-    let instances = 0; // checks for duplicate retract calls
-    for (var j = 0; j < arguments.length; ++j) {
-      if (arguments[i] == arguments[j]) {
-        ++instances;
-      }
-    }
-    if (instances > 1) { // error if there are multiple retract calls for the same axis
-      error(localize("Cannot retract the same axis twice in one line"));
-      return;
-    }
-    switch (arguments[i]) {
-    case X:
-      words.push("X" + xyzFormat.format(machineConfiguration.hasHomePositionX() ? machineConfiguration.getHomePositionX() : 0));
-      break;
-    case Y:
-      words.push("Y" + xyzFormat.format(machineConfiguration.hasHomePositionY() ? machineConfiguration.getHomePositionY() : 0));
-      break;
-    case Z:
-      if (properties.useG30) {
-        writeBlock(gFormat.format(30));
-        writeBlock(gAbsIncModal.format(90));
-        zOutput.reset();
-      }
-      retracted = true; // specifies that the tool has been retracted to the safe plane
-      break;
-    default:
+    if ((arguments[i] < 0) || (arguments[i] > 2)) {
       error(localize("Bad axis specified for writeRetract()."));
       return;
     }
+    if (_xyzMoved[arguments[i]]) {
+      error(localize("Cannot retract the same axis twice in one line"));
+      return;
+    }
+    _xyzMoved[arguments[i]] = true;
   }
-  if (words.length > 0) {
-    gMotionModal.reset();
-    if (properties.useG28) {
-      writeBlock(gFormat.format(28));
-      xOutput.reset();
-      yOutput.reset();
+  
+  // special conditions
+  if (_xyzMoved[2] && (_xyzMoved[0] || _xyzMoved[1])) { // XY don't use G28
+    error(localize("You cannot move home in XY & Z in the same block."));
+    return;
+  }
+  if (_xyzMoved[0] != _xyzMoved[1]) {
+    error(localize("X & Y must be moved to home in the same block."));
+    return;
+  }
+  if (_xyzMoved[0] || _xyzMoved[1]) {
+    _useG30 = false;
+  }
+  if (_xyzMoved[2]) {
+    _useG28 = false;
+  }
+
+  // define home positions
+  var _xHome;
+  var _yHome;
+  var _zHome;
+  if (_useG28) {
+    _xHome = 0;
+    _yHome = 0;
+    _zHome = 0;
+  } else {
+    if (properties.homePositionCenter &&
+      hasParameter("part-upper-x") && hasParameter("part-lower-x")) {
+      _xHome = (getParameter("part-upper-x") + getParameter("part-lower-x")) / 2;
+    } else {
+      _xHome = machineConfiguration.hasHomePositionX() ? machineConfiguration.getHomePositionX() : 0;
+    }
+    _yHome = machineConfiguration.hasHomePositionY() ? machineConfiguration.getHomePositionY() : 0;
+    _zHome = machineConfiguration.getRetractPlane();
+  }
+
+  // format home positions
+  var words = []; // store all retracted axes in an array
+  for (var i = 0; i < arguments.length; ++i) {
+    // define the axes to move
+    switch (arguments[i]) {
+    case X:
+      words.push("X" + xyzFormat.format(_xHome));
+      break;
+    case Y:
+      words.push("Y" + xyzFormat.format(_yHome));
+      break;
+    case Z:
+      words.push("Z" + xyzFormat.format(_zHome));
+      retracted = true;
+      break;
     }
   }
-  zOutput.reset();
+
+  // output move to home
+  if (words.length > 0) {
+    if (_useG28) {
+      writeBlock(gFormat.format(28));
+    } else if (_useG30) {
+      writeBlock(gFormat.format(30));
+    }
+
+    // force any axes that move to home on next block
+    if (_xyzMoved[0]) {
+      xOutput.reset();
+    }
+    if (_xyzMoved[1]) {
+      yOutput.reset();
+    }
+    if (_xyzMoved[2]) {
+      zOutput.reset();
+    }
+  }
 }
 
 function onClose() {
