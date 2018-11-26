@@ -4,8 +4,8 @@
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 42071 de911d15ab16f0825ccc27d9b231204e8f76c27d $
-  $Date: 2018-08-09 10:29:50 $
+  $Revision: 42145 3ef6ef136f68132df4d932bf16f29ac1ec1b893b $
+  $Date: 2018-09-28 16:13:20 $
   
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
@@ -60,7 +60,8 @@ properties = {
   multiCoolAirBlastSeconds: 4, // air blast time when equipped with Multi-Coolant module
   disableCoolant: false, // disables all coolant codes
   reversingHead: false, // uses self-reversing tapping head
-  reversingHeadFeed: 2.0 // percentage of tapping feed to retract the tool with reversing tapping head
+  reversingHeadFeed: 2.0, // percentage of tapping feed to retract the tool with reversing tapping head
+  maxTool: 256 // maximum tool/offset number
 };
 
 // user-defined property definitions
@@ -101,7 +102,8 @@ propertyDefinitions = {
   multiCoolAirBlastSeconds: {title:"Multi-Coolant air blast in seconds", description:"Sets the Multi-Coolant air blast time in seconds.", type:"integer"},
   disableCoolant: {title:"Disable coolant", description:"Disable all coolant codes.", type:"boolean"},
   reversingHead: {title:"Use self-reversing tapping head", description:"Expanded cycles are output with a self-reversing tapping head.", type:"boolean"},
-  reversingHeadFeed: {title:"Self-reversing head feed ratio", description:"The percentage of the tapping feedrate for retracting the tool.", type:"number"}
+  reversingHeadFeed: {title:"Self-reversing head feed ratio", description:"The percentage of the tapping feedrate for retracting the tool.", type:"number"},
+  maxTool: {title:"Maximum tool number", description:"Enter the maximum tool number allowed by the control.", type:"number"}
 };
 
 
@@ -558,12 +560,12 @@ function onSection() {
     forceWorkPlane();
     // onCommand(COMMAND_COOLANT_OFF);
 
-    if (tool.number > 256) {
+    if (tool.number > properties.maxTool) {
       warning(localize("Tool number exceeds maximum value."));
     }
     
     var lengthOffset = tool.lengthOffset;
-    if (lengthOffset > 256) {
+    if (lengthOffset > properties.maxTool) {
       error(localize("Length offset out of range."));
       return;
     }
@@ -694,7 +696,7 @@ function onSection() {
 
   if (!insertToolCall && retracted) { // G43 already called above on tool change
     var lengthOffset = tool.lengthOffset;
-    if (lengthOffset > 256) {
+    if (lengthOffset > properties.maxTool) {
       error(localize("Length offset out of range."));
       return;
     }
@@ -850,6 +852,11 @@ function expandTappingPoint(x, y, z) {
 }
 
 function onCyclePoint(x, y, z) {
+  if (!isSameDirection(getRotation().forward, new Vector(0, 0, 1))) {
+    expandCyclePoint(x, y, z);
+    return;
+  }
+
   if (isFirstCyclePoint()) {
     repositionToCycleClearance(cycle, x, y, z);
     
@@ -1081,7 +1088,7 @@ function onLinear(_x, _y, _z, feed) {
     if (pendingRadiusCompensation >= 0) {
       pendingRadiusCompensation = -1;
       var d = tool.diameterOffset;
-      if (d > 256) {
+      if (d > properties.maxTool) {
         warning(localize("The diameter offset exceeds the maximum value."));
       }
       writeBlock(gPlaneModal.format(17));
