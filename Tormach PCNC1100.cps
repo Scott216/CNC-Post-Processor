@@ -4,8 +4,8 @@
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 42145 3ef6ef136f68132df4d932bf16f29ac1ec1b893b $
-  $Date: 2018-09-28 16:13:20 $
+  $Revision: 42214 5670701217b62bf3dd3ae1afa8a0a87267c003c8 $
+  $Date: 2018-12-19 08:24:58 $
   
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
@@ -119,7 +119,6 @@ var xyzFormat = createFormat({decimals:(unit == MM ? 3 : 4), forceDecimal:true})
 var rFormat = xyzFormat; // radius
 var abcFormat = createFormat({decimals:3, forceDecimal:true, scale:DEG});
 var feedFormat = createFormat({decimals:(unit == MM ? 0 : 1), forceDecimal:true});
-var inverseTimeFormat = createFormat({decimals:4, forceDecimal:true});
 var toolFormat = createFormat({decimals:0});
 var rpmFormat = createFormat({decimals:0});
 var coolantOptionFormat = createFormat({decimals:0});
@@ -135,7 +134,6 @@ var aOutput = createVariable({prefix:"A"}, abcFormat);
 var bOutput = createVariable({prefix:"B"}, abcFormat);
 var cOutput = createVariable({prefix:"C"}, abcFormat);
 var feedOutput = createVariable({prefix:"F"}, feedFormat);
-var inverseTimeOutput = createVariable({prefix:"F", force:true}, inverseTimeFormat);
 var sOutput = createVariable({prefix:"S", force:true}, rpmFormat);
 var dOutput = createVariable({}, dFormat);
 
@@ -1157,7 +1155,11 @@ function onLinear5D(_x, _y, _z, _a, _b, _c, feed) {
   var f = {frn:0, fmode:0};
   if (a || b || c) {
     f = getMultiaxisFeed(_x, _y, _z, _a, _b, _c, feed);
-    f.frn = inverseTimeOutput.format(f.frn);
+    if (useInverseTimeFeed) {
+      f.frn = inverseTimeOutput.format(f.frn);
+    } else {
+      f.frn = feedOutput.format(f.frn);
+    }
   } else {
     f.frn = feedOutput.format(feed);
     f.fmode = 94;
@@ -1175,8 +1177,7 @@ function onLinear5D(_x, _y, _z, _a, _b, _c, feed) {
 }
 
 // Start of multi-axis feedrate logic
-/***** Be sure to add 'useInverseTime' to post properties if necessary. *****/
-/***** 'inverseTimeOutput' should be defined if Inverse Time feedrates are supported. *****/
+/***** You can add 'properties.useInverseTime' if desired. *****/
 /***** 'previousABC' can be added throughout to maintain previous rotary positions. Required for Mill/Turn machines. *****/
 /***** 'headOffset' should be defined when a head rotary axis is defined. *****/
 /***** The feedrate mode must be included in motion block output (linear, circular, etc.) for Inverse Time feedrate support. *****/
@@ -1185,6 +1186,8 @@ var inverseTimeUnits = 1.0; // 1.0 = minutes, 60.0 = seconds
 var maxInverseTime = 99999.9999; // maximum value to output for Inverse Time feeds
 var maxDPM = 9999.99; // maximum value to output for DPM feeds
 var useInverseTimeFeed = true; // use 1/T feeds
+var inverseTimeFormat = createFormat({decimals:4, forceDecimal:true});
+var inverseTimeOutput = createVariable({prefix:"F", force:true}, inverseTimeFormat);
 var previousDPMFeed = 0; // previously output DPM feed
 var dpmFeedToler = 0.5; // tolerance to determine when the DPM feed has changed
 // var previousABC = new Vector(0, 0, 0); // previous ABC position if maintained in post, don't define if not used
