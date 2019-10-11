@@ -4,8 +4,8 @@
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 42214 5670701217b62bf3dd3ae1afa8a0a87267c003c8 $
-  $Date: 2018-12-19 08:24:58 $
+  $Revision: 42473 905303e8374380273c82d214b32b7e80091ba92e $
+  $Date: 2019-09-04 07:46:02 $
   
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
@@ -32,8 +32,6 @@ minimumCircularSweep = toRad(0.01);
 maximumCircularSweep = toRad(180);
 allowHelicalMoves = true;
 allowedCircularPlanes = undefined; // allow any circular motion
-
-
 
 // user-defined properties
 properties = {
@@ -105,8 +103,6 @@ propertyDefinitions = {
   reversingHeadFeed: {title:"Self-reversing head feed ratio", description:"The percentage of the tapping feedrate for retracting the tool.", type:"number"},
   maxTool: {title:"Maximum tool number", description:"Enter the maximum tool number allowed by the control.", type:"number"}
 };
-
-
 
 var permittedCommentChars = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,=_-*";
 
@@ -186,7 +182,7 @@ function writeBlock() {
 }
 
 function formatComment(text) {
-  return("(" + filterText(String(text), permittedCommentChars) + ")");
+  return ("(" + filterText(String(text), permittedCommentChars) + ")");
 }
 
 /**
@@ -234,7 +230,7 @@ function onOpen() {
   masterAxis = Math.abs(rotary) - 1;
   if (masterAxis >= 0) {
     var rotaryVector = [0, 0, 0];
-    rotaryVector[masterAxis] = rotary/Math.abs(rotary);
+    rotaryVector[masterAxis] = rotary / Math.abs(rotary);
     var aAxis = createAxis({coordinate:0, table:true, axis:rotaryVector, cyclic:true, preference:0});
     machineConfiguration = new MachineConfiguration(aAxis);
 
@@ -269,7 +265,7 @@ function onOpen() {
 
   if (properties.writeVersion) {
     if (typeof getHeaderVersion == "function" && getHeaderVersion()) {
-        writeComment(localize("post version") + ": " + getHeaderVersion());
+      writeComment(localize("post version") + ": " + getHeaderVersion());
     }
     if (typeof getHeaderDate == "function" && getHeaderDate()) {
       writeComment(localize("post modified") + ": " + getHeaderDate());
@@ -570,9 +566,9 @@ function onSection() {
 
     if (properties.useM6) {
       writeBlock("T" + toolFormat.format(tool.number),
-      gFormat.format(43),
-      hFormat.format(lengthOffset),
-      mFormat.format(6));
+        gFormat.format(43),
+        hFormat.format(lengthOffset),
+        mFormat.format(6));
     } else {
       writeBlock("T" + toolFormat.format(tool.number), gFormat.format(43), hFormat.format(lengthOffset));
     }
@@ -646,7 +642,7 @@ function onSection() {
         error(localize("Work offset out of range."));
       } else {
         if (workOffset != currentWorkOffset) {
-          p = 59 + ((p - 6)/10.0);
+          p = 59 + ((p - 6) / 10.0);
           writeBlock(gFormat.format(p)); // G59.x
           currentWorkOffset = workOffset;
         }
@@ -680,7 +676,6 @@ function onSection() {
     }
     setRotation(remaining);
   }
-
 
   forceAny();
   gMotionModal.reset();
@@ -823,7 +818,7 @@ function setCoolant(coolant, topOfPart) {
         // Side Milling. Sweep the coolant along the length of the tool
         } else {
           coolCodes[1] = "P" + coolantOptionFormat.format(0);
-          coolCodes[2] = "R" + xyzFormat.format(tool.fluteLength * (properties.smartCoolToolSweepPercentage/100.0));
+          coolCodes[2] = "R" + xyzFormat.format(tool.fluteLength * (properties.smartCoolToolSweepPercentage / 100.0));
         }
       }
     }
@@ -844,9 +839,9 @@ function getCommonCycle(x, y, z, r) {
 }
 
 function expandTappingPoint(x, y, z) {
-  onRapid(x, y, cycle.clearance);
-  onLinear(x, y, z, cycle.feedrate);
-  onLinear(x, y, cycle.clearance, cycle.feedrate * properties.reversingHeadFeed);
+  onExpandedRapid(x, y, cycle.clearance);
+  onExpandedLinear(x, y, z, cycle.feedrate);
+  onExpandedLinear(x, y, cycle.clearance, cycle.feedrate * properties.reversingHeadFeed);
 }
 
 function onCyclePoint(x, y, z) {
@@ -1423,7 +1418,7 @@ function getMoveLength(_x, _y, _z, _a, _b, _c) {
   if (false) {
     writeComment("DEBUG - tool   = " + moveLength.tool);
     writeComment("DEBUG - xyz    = " + moveLength.xyz);
-    var temp = Vector.product(moveLength.abc, 180/Math.PI);
+    var temp = Vector.product(moveLength.abc, 180 / Math.PI);
     writeComment("DEBUG - abc    = " + temp);
     writeComment("DEBUG - radius = " + moveLength.radius);
   }
@@ -1439,7 +1434,7 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
 
   // controller does not handle transition between planes well
   if (((movementType == MOVEMENT_LEAD_IN) ||
-       (movementType == MOVEMENT_LEAD_OUT)||
+       (movementType == MOVEMENT_LEAD_OUT) ||
        (movementType == MOVEMENT_RAMP) ||
        (movementType == MOVEMENT_PLUNGE) ||
        (movementType == MOVEMENT_RAMP_HELIX) ||
@@ -1671,8 +1666,6 @@ function onClose() {
   writeRetract(Z);
 
   writeRetract(X, Y);
-
-
 
   setWorkPlane(new Vector(0, 0, 0)); // reset working plane
 
