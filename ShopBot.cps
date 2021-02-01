@@ -1,21 +1,26 @@
 /**
-  Copyright (C) 2012-2019 by Autodesk, Inc.
+  Copyright (C) 2012-2020 by Autodesk, Inc.
   All rights reserved.
 
   ShopBot OpenSBP post processor configuration.
 
-  $Revision: 42539 dc12111d0c9eaf54776176848db6168bf751f9c0 $
-  $Date: 2019-09-23 19:39:58 $
+  $Revision: 42961 93454aaffccabe3254a9a8dd1560f5f2ebdb11b7 $
+  $Date: 2020-10-16 06:14:52 $
   
   FORKID {866F31A2-119D-485c-B228-090CC89C9BE8}
+
+  Ver 43004, https://cam.autodesk.com/hsmposts   - SRG
+
+  2/1/21 - Added support for Manual NC passthrough.  Ref - http://autode.sk/3jdxNnK
+
 */
 
 description = "ShopBot OpenSBP";
 vendor = "ShopBot Tools";
 vendorUrl = "http://www.shopbottools.com";
-legal = "Copyright (C) 2012-2019 by Autodesk, Inc.";
+legal = "Copyright (C) 2012-2020 by Autodesk, Inc.";
 certificationLevel = 2;
-minimumRevision = 40783;
+minimumRevision = 45500;
 
 longDescription = "Generic post for the Shopbot OpenSBP format with support for both manual and automatic tool changes. By default the post operates in 3-axis mode. For a 5-axis tool set the 'fiveAxis' property to Yes. 5-axis users must set the 'gaugeLength' property in inches before cutting which can be calculated through the tool's calibration macro. For a 4-axis tool set the 'fourAxis' property to YES. For 4-axis mode, the B-axis will turn around the X-axis by default. For the Y-axis configurations set the 'bAxisTurnsAroundX' property to NO. Users running older versions of SB3 - V3.5 or earlier should set the 'SB3v36' property to NO.";
 
@@ -44,7 +49,8 @@ properties = {
   SB3v36: true, // specifies that the version of control is SB3 V3.6 or greater
   gaugeLength: 6.3, // in INCHES always - change this for your particular machine and if recalibration is required - use calibration macro to get value
   safeRetractDistance: 2.0, // in INCHES always - safe retract distance above part in Z to position 5-axis head
-  useDPMFeeds: true // enabled uses DPM feeds for multi-axis moves, disabled uses FPM
+  useDPMFeeds: "tooltip", // enabled uses DPM feeds for multi-axis moves, disabled uses FPM
+  minimizeFeedOutput: true // enabled uses all feed rates from CAM, disabled only uses the cutting and plunge feeds
 };
 
 // user-defined property definitions
@@ -55,7 +61,17 @@ propertyDefinitions = {
   SB3v36: {title:"SB3 V3.6 or greater", description:"Specifies that the version of control is SB3 V3.6 or greater", type:"boolean"},
   gaugeLength: {title:"Gauge length (IN)", description:"Always set in inches. Change this for your particular machine and if recalibration is required. Use calibration macro to get value.", type:"number"},
   safeRetractDistance: {title:"Safe retract distance", description:"A set distance to add to the tool length for rewind C-axis tool retract.", type:"number"},
-  useDPMFeeds: {title:"Rotary moves use VS feeds", description:"Enable to output DPM feeds with rotary axis moves, disable for FPM feeds.", type:"boolean"}
+  useDPMFeeds: {
+    title: "Rotary moves feed rate output",
+    description: "'VS feeds' outputs DPM .",
+    type: "enum",
+    values:[
+      {title:"VS feeds", id:"true"},
+      {title:"Linear axis MS feeds", id:"false"},
+      {title:"Programmed feeds", id:"tooltip"}
+    ]
+  },
+  minimizeFeedOutput: {title:"Minimize feedrate output", description:"Enable to limit feed rate output to the cutting (XY) and plunge (Z) feedrates (for multi-axis moves, 'Rotary moves feed rate output' must be set to 'Programmed feeds'). Disable to output all programmed feed rates.", type:"boolean"},
 };
 
 function CustomVariable(specifiers, format) {
@@ -78,6 +94,14 @@ CustomVariable.prototype.reset = function () {
   return this.variable.reset();
 };
 
+CustomVariable.prototype.disable = function () {
+  return this.variable.disable();
+};
+
+CustomVariable.prototype.enable = function () {
+  return this.variable.enable();
+};
+
 var xyzFormat = createFormat({decimals:(unit == MM ? 3 : 4)});
 var abcFormat = createFormat({decimals:3, scale:DEG});
 var feedFormat = createFormat({decimals:(unit == MM ? 3 : 4), scale:1.0 / 60.0}); // feed is mm/s or in/s
@@ -95,6 +119,19 @@ var dpmOutput1 = createVariable({}, dpmFormat);
 var dpmOutput2 = createVariable({}, dpmFormat);
 var feedZOutput = createVariable({force:true}, feedFormat);
 var sOutput = createVariable({prefix:"TR, ", force:true}, rpmFormat);
+
+// collected state
+var useSimpleFeeds;
+
+// Manual NC PassThrough - added by SRG 2/1/21
+function onPassThrough(text) {
+  writeComment("Manual NC Passthrough");
+  var commands = String(text).split(",");
+  for (text in commands) {
+    writeBlock(commands[text]);
+  }
+}
+
 
 /**
   Writes the specified block.
@@ -473,6 +510,19 @@ function onSection() {
     yOutput.offset = 0;
     zOutput.offset = 0;
   }
+
+  useSimpleFeeds = false;
+  if ((!currentSection.isMultiAxis() && properties.minimizeFeedOutput) ||
+      (properties.minimizeFeedOutput && properties.useDPMFeeds == "tooltip")) {
+    if (hasParameter("operation:tool_feedCutting") && hasParameter("operation:tool_feedPlunge")) {
+      useSimpleFeeds = true;
+      var f = feedOutput.format(getParameter("operation:tool_feedCutting"));
+      var z = feedZOutput.format(Math.min(getParameter("operation:tool_feedPlunge"), maxZFeed));
+      if (f || z) {
+        writeBlock("MS", f, z);
+      }
+    }
+  }
 }
 
 function onDwell(seconds) {
@@ -496,6 +546,9 @@ function onRadiusCompensation() {
 }
 
 function writeFeed(feed, moveInZ, multiAxis) {
+  if (useSimpleFeeds) {
+    return;
+  }
   var fCode = multiAxis ? "VS" : "MS";
   if (multiAxis) {
     if (dpmFormat.getResultingValue(feed[0]) != dpmFormat.getResultingValue(dpmOutput1.getCurrent()) ||
@@ -631,6 +684,197 @@ function onLinear5D(_x, _y, _z, _a, _b, _c, feed) {
   }
 }
 
+// Start of onRewindMachine logic
+/***** Be sure to add 'safeRetractDistance' to post properties. *****/
+var performRewinds = false; // enables the onRewindMachine logic
+var safeRetractFeed = (unit == IN) ? 20 : 500;
+var safePlungeFeed = (unit == IN) ? 10 : 250;
+var stockAllowance = new Vector(toPreciseUnit(0.1, IN), toPreciseUnit(0.1, IN), toPreciseUnit(0.1, IN));
+
+/** Allow user to override the onRewind logic. */
+function onRewindMachineEntry(_a, _b, _c) {
+  return false;
+}
+
+/** Retract to safe position before indexing rotaries. */
+function moveToSafeRetractPosition(isRetracted) {
+  writeBlock(
+    "JZ",
+    zOutput.format(machineConfiguration.getRetractPlane())
+  );
+  writeBlock("JH");
+  if (properties.forceHomeOnIndexing) {
+    writeBlock(
+      "JX",
+      xOutput.format(machineConfiguration.getRetractPlane()),
+      "JY",
+      yOutput.format(machineConfiguration.getRetractPlane())
+    );
+    writeBlock("JH");
+  }
+}
+
+/** Return from safe position after indexing rotaries. */
+function returnFromSafeRetractPosition(position, abc) {
+  forceXYZ();
+  xOutput.reset();
+  yOutput.reset();
+  zOutput.reset();
+  onRapid5D(position.x, position.y, position.z, abc.x, abc.y, abc.z);
+  //zOutput.enable();
+  //onExpandedRapid(position.x, position.y, position.z);
+}
+
+/** Intersect the point-vector with the stock box. */
+function intersectStock(point, direction) {
+  var intersection = getWorkpiece().getRayIntersection(point, direction, stockAllowance);
+  return intersection === null ? undefined : intersection.second;
+}
+
+/** Calculates the retract point using the stock box and safe retract distance. */
+function getRetractPosition(currentPosition, currentDirection) {
+  var retractPos = intersectStock(currentPosition, currentDirection);
+  if (retractPos == undefined) {
+    if (tool.getFluteLength() != 0) {
+      retractPos = Vector.sum(currentPosition, Vector.product(currentDirection, tool.getFluteLength()));
+    }
+  }
+  if ((retractPos != undefined) && properties.safeRetractDistance) {
+    retractPos = Vector.sum(retractPos, Vector.product(currentDirection, properties.safeRetractDistance));
+  }
+  return retractPos;
+}
+
+/** Determines if the angle passed to onRewindMachine is a valid starting position. */
+function isRewindAngleValid(_a, _b, _c) {
+  // make sure the angles are different from the last output angles
+  if (!abcFormat.areDifferent(getCurrentDirection().x, _a) &&
+      !abcFormat.areDifferent(getCurrentDirection().y, _b) &&
+      !abcFormat.areDifferent(getCurrentDirection().z, _c)) {
+    error(
+      localize("REWIND: Rewind angles are the same as the previous angles: ") +
+      abcFormat.format(_a) + ", " + abcFormat.format(_b) + ", " + abcFormat.format(_c)
+    );
+    return false;
+  }
+  
+  // make sure angles are within the limits of the machine
+  var abc = new Array(_a, _b, _c);
+  var ix = machineConfiguration.getAxisU().getCoordinate();
+  var failed = false;
+  if ((ix != -1) && !machineConfiguration.getAxisU().isSupported(abc[ix])) {
+    failed = true;
+  }
+  ix = machineConfiguration.getAxisV().getCoordinate();
+  if ((ix != -1) && !machineConfiguration.getAxisV().isSupported(abc[ix])) {
+    failed = true;
+  }
+  ix = machineConfiguration.getAxisW().getCoordinate();
+  if ((ix != -1) && !machineConfiguration.getAxisW().isSupported(abc[ix])) {
+    failed = true;
+  }
+  if (failed) {
+    error(
+      localize("REWIND: Rewind angles are outside the limits of the machine: ") +
+      abcFormat.format(_a) + ", " + abcFormat.format(_b) + ", " + abcFormat.format(_c)
+    );
+    return false;
+  }
+  
+  return true;
+}
+
+function onRewindMachine(_a, _b, _c) {
+  
+  if (!performRewinds) {
+    error(localize("REWIND: Rewind of machine is required for simultaneous multi-axis toolpath and has been disabled."));
+    return;
+  }
+  
+  // Allow user to override rewind logic
+  if (onRewindMachineEntry(_a, _b, _c)) {
+    return;
+  }
+
+  // Determine if input angles are valid or will cause a crash
+  if (!isRewindAngleValid(_a, _b, _c)) {
+    error(
+      localize("REWIND: Rewind angles are invalid:") +
+      abcFormat.format(_a) + ", " + abcFormat.format(_b) + ", " + abcFormat.format(_c)
+    );
+    return;
+  }
+  
+  // Work with the tool end point
+  if (currentSection.getOptimizedTCPMode() == 0) {
+    currentTool = getCurrentPosition();
+  } else {
+    currentTool = machineConfiguration.getOrientation(getCurrentDirection()).multiply(getCurrentPosition());
+  }
+  var currentABC = getCurrentDirection();
+  var currentDirection = machineConfiguration.getDirection(currentABC);
+  
+  // Calculate the retract position
+  var retractPosition = getRetractPosition(currentTool, currentDirection);
+
+  // Output warning that axes take longest route
+  if (retractPosition == undefined) {
+    error(localize("REWIND: Cannot calculate retract position."));
+    return;
+  } else {
+    var text = localize("REWIND: Tool is retracting due to rotary axes limits.");
+    warning(text);
+    writeComment(text);
+  }
+
+  // Move to retract position
+  var position;
+  if (currentSection.getOptimizedTCPMode() == 0) {
+    position = retractPosition;
+  } else {
+    position = machineConfiguration.getOrientation(getCurrentDirection()).getTransposed().multiply(retractPosition);
+  }
+  onLinear5D(position.x, position.y, position.z, currentABC.x, currentABC.y, currentABC.z, safeRetractFeed);
+  
+  // Cancel so that tool doesn't follow tables
+  //writeBlock(gFormat.format(49), formatComment("TCPC OFF"));
+
+  // Position to safe machine position for rewinding axes
+  moveToSafeRetractPosition(false);
+
+  // Rotate axes to new position above reentry position
+  xOutput.disable();
+  yOutput.disable();
+  zOutput.disable();
+  onRapid5D(position.x, position.y, position.z, _a, _b, _c);
+  xOutput.enable();
+  yOutput.enable();
+  zOutput.enable();
+
+  // Reinstate
+  // writeBlock(gFormat.format(234), //hFormat.format(tool.lengthOffset), formatComment("TCPC ON"));
+
+  // Move back to position above part
+  var workpiece = getWorkpiece();
+  var partDatum = workpiece.lower.z;
+  if (partDatum > 0) {
+    writeln("&PWZorigin = Table Surface");
+  } else {
+    writeln("&PWZorigin = Part Surface");
+  }
+  if (currentSection.getOptimizedTCPMode() != 0) {
+    position = machineConfiguration.getOrientation(new Vector(_a, _b, _c)).getTransposed().multiply(retractPosition);
+  }
+  returnFromSafeRetractPosition(position, new Vector(_a, _b, _c));
+
+  // Plunge tool back to original position
+  if (currentSection.getOptimizedTCPMode() != 0) {
+    currentTool = machineConfiguration.getOrientation(new Vector(_a, _b, _c)).getTransposed().multiply(currentTool);
+  }
+  onLinear5D(currentTool.x, currentTool.y, currentTool.z, _a, _b, _c, safePlungeFeed);
+}
+// End of onRewindMachine logic
+
 // Start of multi-axis feedrate logic
 /***** Be sure to add 'useInverseTime' to post properties if necessary. *****/
 /***** 'inverseTimeOutput' should be defined if Inverse Time feedrates are supported. *****/
@@ -711,12 +955,16 @@ function getFeedDPM(_moveLength, _feed) {
     var dpmA;
     var dpmB;
     var xy = new Vector(_moveLength.xyz.x, _moveLength.xyz.y, 0).length;
-    if (!properties.useDPMFeeds &&
+    if (properties.useDPMFeeds == "false" &&
         ((xyzFormat.getResultingValue(_moveLength.xyz.x) != 0) ||
         (xyzFormat.getResultingValue(_moveLength.xyz.y) != 0) ||
         (xyzFormat.getResultingValue(_moveLength.xyz.z) != 0))) {
       dpmA = xy / moveTime;
       dpmB = _moveLength.xyz.z / moveTime;
+      dpmAsXY = true;
+    } else if (properties.useDPMFeeds == "tooltip") {
+      dpmA = _feed;
+      dpmB = _feed;
       dpmAsXY = true;
     } else {
       dpmA = toDeg(_moveLength.abc.x) / moveTime;
@@ -954,6 +1202,10 @@ function onSectionEnd() {
   xOutput.offset = 0;
   yOutput.offset = 0;
   zOutput.offset = 0;
+  // the code below gets the machine angles from previous operation.  closestABC must also be set to true
+  if (currentSection.isMultiAxis() && currentSection.isOptimizedForMachine()) {
+    currentMachineABC = currentSection.getFinalToolAxisABC();
+  }
   forceAny();
 }
 
