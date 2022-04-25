@@ -4,8 +4,8 @@
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 43184 e4129b6ddd945cb26205c99f0167363a0fa2772e $
-  $Date: 2021-03-15 18:00:40 $
+  $Revision: 43289 77144070301d44e4cda7a331a4d8b350d53b2702 $
+  $Date: 2021-05-25 12:03:00 $
   
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
@@ -22,7 +22,7 @@ longDescription = "Tormach PathPilot post for 3-axis and 4-axis milling with Sma
 extension = "nc";
 setCodePage("ascii");
 
-capabilities = CAPABILITY_MILLING;
+capabilities = CAPABILITY_MILLING | CAPABILITY_MACHINE_SIMULATION;
 tolerance = spatial(0.002, MM);
 
 minimumChordLength = spatial(0.25, MM);
@@ -240,6 +240,7 @@ var xyzFormat = createFormat({decimals:(unit == MM ? 3 : 4), forceDecimal:true})
 var rFormat = xyzFormat; // radius
 var abcFormat = createFormat({decimals:3, forceDecimal:true, scale:DEG});
 var feedFormat = createFormat({decimals:(unit == MM ? 0 : 1), forceDecimal:true});
+var inverseTimeFormat = createFormat({decimals:4, forceDecimal:true});
 var toolFormat = createFormat({decimals:0});
 var rpmFormat = createFormat({decimals:0});
 var coolantOptionFormat = createFormat({decimals:0});
@@ -256,6 +257,7 @@ var aOutput = createVariable({prefix:"A"}, abcFormat);
 var bOutput = createVariable({prefix:"B"}, abcFormat);
 var cOutput = createVariable({prefix:"C"}, abcFormat);
 var feedOutput = createVariable({prefix:"F"}, feedFormat);
+var inverseTimeOutput = createVariable({prefix:"F", force:true}, inverseTimeFormat);
 var sOutput = createVariable({prefix:"S", force:true}, rpmFormat);
 var dOutput = createVariable({}, dFormat);
 
@@ -336,7 +338,145 @@ function parseChoice() {
   return -1;
 }
 
+// Start of machine configuration logic
+var compensateToolLength = false; // add the tool length to the pivot distance for nonTCP rotary heads
+var virtualTooltip = false; // translate the pivot point to the virtual tool tip for nonTCP rotary heads
+// internal variables, do not change
+var receivedMachineConfiguration;
+var tcpIsSupported;
+
+function activateMachine() {
+  // determine if TCP is supported by the machine
+  tcpIsSupported = false;
+  var axes = [machineConfiguration.getAxisU(), machineConfiguration.getAxisV(), machineConfiguration.getAxisW()];
+  for (var i in axes) {
+    if (axes[i].isEnabled() && axes[i].isTCPEnabled()) {
+      tcpIsSupported = true;
+      break;
+    }
+  }
+
+  // setup usage of multiAxisFeatures
+  useMultiAxisFeatures = getProperty("useMultiAxisFeatures") != undefined ? getProperty("useMultiAxisFeatures") :
+    (typeof useMultiAxisFeatures != "undefined" ? useMultiAxisFeatures : false);
+  useABCPrepositioning = getProperty("useABCPrepositioning") != undefined ? getProperty("useABCPrepositioning") :
+    (typeof useABCPrepositioning != "undefined" ? useABCPrepositioning : false);
+
+  if (!machineConfiguration.isMachineCoordinate(0) && (typeof aOutput != "undefined")) {
+    aOutput.disable();
+  }
+  if (!machineConfiguration.isMachineCoordinate(1) && (typeof bOutput != "undefined")) {
+    bOutput.disable();
+  }
+  if (!machineConfiguration.isMachineCoordinate(2) && (typeof cOutput != "undefined")) {
+    cOutput.disable();
+  }
+
+  if (!machineConfiguration.isMultiAxisConfiguration()) {
+    return; // don't need to modify any settings for 3-axis machines
+  }
+
+  // retract/reconfigure
+  safeRetractDistance = getProperty("safeRetractDistance") != undefined ? getProperty("safeRetractDistance") :
+    (typeof safeRetractDistance == "number" ? safeRetractDistance : 0);
+  if (machineConfiguration.performRewinds() || (typeof performRewinds == "undefined" ? false : performRewinds)) {
+    machineConfiguration.enableMachineRewinds(); // enables the rewind/reconfigure logic
+    if (typeof stockExpansion != "undefined") {
+      machineConfiguration.setRewindStockExpansion(stockExpansion);
+      if (!receivedMachineConfiguration) {
+        setMachineConfiguration(machineConfiguration);
+      }
+    }
+  }
+
+  if (machineConfiguration.isHeadConfiguration()) {
+    compensateToolLength = typeof compensateToolLength == "undefined" ? false : compensateToolLength;
+    virtualTooltip = typeof virtualTooltip == "undefined" ? false : virtualTooltip;
+    machineConfiguration.setVirtualTooltip(virtualTooltip);
+  }
+  setFeedrateMode();
+
+  if (machineConfiguration.isHeadConfiguration() && compensateToolLength) {
+    for (var i = 0; i < getNumberOfSections(); ++i) {
+      var section = getSection(i);
+      if (section.isMultiAxis()) {
+        machineConfiguration.setToolLength(section.getTool().getBodyLength()); // define the tool length for head adjustments
+        section.optimizeMachineAnglesByMachine(machineConfiguration, OPTIMIZE_AXIS);
+      }
+    }
+  } else {
+    optimizeMachineAngles2(OPTIMIZE_AXIS);
+  }
+}
+
+function setFeedrateMode(reset) {
+  if ((tcpIsSupported && !reset) || !machineConfiguration.isMultiAxisConfiguration()) {
+    return;
+  }
+  machineConfiguration.setMultiAxisFeedrate(
+    tcpIsSupported ? FEED_FPM : FEED_INVERSE_TIME,
+    99999.9999, // maximum output value for inverse time feed rates
+    INVERSE_MINUTES, // can be INVERSE_SECONDS or DPM_COMBINATION for DPM feeds
+    0.5, // tolerance to determine when the DPM feed has changed
+    1.0 // ratio of rotary accuracy to linear accuracy for DPM calculations
+  );
+  if (!receivedMachineConfiguration || (revision < 45765)) {
+    setMachineConfiguration(machineConfiguration);
+  }
+}
+
+function defineMachine() {
+  if (getProperty("rotaryTableAxis") != "none") {
+    // Define rotary attributes from properties
+    var rotary = parseChoice(getProperty("rotaryTableAxis"), "-Z", "-Y", "-X", "NONE", "X", "Y", "Z");
+    if (rotary < 0) {
+      error(localize("Valid rotaryTableAxis values are: None, X, Y, Z, -X, -Y, -Z"));
+      return;
+    }
+    rotary -= 3;
+
+    // Define Master (carrier) axis
+    masterAxis = Math.abs(rotary) - 1;
+    if (masterAxis >= 0) {
+      var rotaryVector = [0, 0, 0];
+      rotaryVector[masterAxis] = rotary / Math.abs(rotary);
+      var aAxis = createAxis({coordinate:0, table:true, axis:rotaryVector, cyclic:true, preference:0, tcp:false});
+      machineConfiguration = new MachineConfiguration(aAxis);
+
+      setMachineConfiguration(machineConfiguration);
+      if (receivedMachineConfiguration) {
+        warning(localize("The provided CAM machine configuration is overwritten by the postprocessor."));
+        receivedMachineConfiguration = false; // CAM provided machine configuration is overwritten
+      }
+    }
+  } else {
+    if (false) { // note: setup your machine here
+      var aAxis = createAxis({coordinate:0, table:true, axis:[1, 0, 0], range:[-120, 120], preference:1, tcp:true});
+      var cAxis = createAxis({coordinate:2, table:true, axis:[0, 0, 1], range:[-360, 360], preference:0, tcp:true});
+      machineConfiguration = new MachineConfiguration(aAxis, cAxis);
+  
+      setMachineConfiguration(machineConfiguration);
+      if (receivedMachineConfiguration) {
+        warning(localize("The provided CAM machine configuration is overwritten by the postprocessor."));
+        receivedMachineConfiguration = false; // CAM provided machine configuration is overwritten
+      }
+    }
+  }
+  /* home positions */
+  // machineConfiguration.setHomePositionX(toPreciseUnit(0, IN));
+  // machineConfiguration.setHomePositionY(toPreciseUnit(0, IN));
+  // machineConfiguration.setRetractPlane(toPreciseUnit(0, IN));
+}
+// End of machine configuration logic
+
 function onOpen() {
+  receivedMachineConfiguration = (typeof machineConfiguration.isReceived == "function") ? machineConfiguration.isReceived() :
+    ((machineConfiguration.getDescription() != "") || machineConfiguration.isMultiAxisConfiguration());
+  if (typeof defineMachine == "function") {
+    defineMachine(); // hardcoded machine configuration
+  }
+  activateMachine(); // enable the machine optimizations and settings
+
   if (getProperty("useRadius")) {
     maximumCircularSweep = toRad(90); // avoid potential center calculation errors for CNC
   }
@@ -344,37 +484,6 @@ function onOpen() {
     setProperty("showSequenceNumbers", false);
   }
 
-  // Define rotary attributes from properties
-  var rotary = parseChoice(getProperty("rotaryTableAxis"), "-Z", "-Y", "-X", "NONE", "X", "Y", "Z");
-  if (rotary < 0) {
-    error(localize("Valid rotaryTableAxis values are: None, X, Y, Z, -X, -Y, -Z"));
-    return;
-  }
-  rotary -= 3;
-
-  // Define Master (carrier) axis
-  masterAxis = Math.abs(rotary) - 1;
-  if (masterAxis >= 0) {
-    var rotaryVector = [0, 0, 0];
-    rotaryVector[masterAxis] = rotary / Math.abs(rotary);
-    var aAxis = createAxis({coordinate:0, table:true, axis:rotaryVector, cyclic:true, preference:0});
-    machineConfiguration = new MachineConfiguration(aAxis);
-
-    setMachineConfiguration(machineConfiguration);
-    // Single rotary does not use TCP mode
-    optimizeMachineAngles2(1); // 0 = TCP Mode ON, 1 = TCP Mode OFF
-  }
-
-  if (!machineConfiguration.isMachineCoordinate(0)) {
-    aOutput.disable();
-  }
-  if (!machineConfiguration.isMachineCoordinate(1)) {
-    bOutput.disable();
-  }
-  if (!machineConfiguration.isMachineCoordinate(2)) {
-    cOutput.disable();
-  }
-  
   if (!getProperty("separateWordsWithSpace")) {
     setWordSeparator("");
   }
@@ -564,7 +673,8 @@ function setWorkPlane(abc) {
     conditional(machineConfiguration.isMachineCoordinate(1), "B" + abcFormat.format(abc.y)),
     conditional(machineConfiguration.isMachineCoordinate(2), "C" + abcFormat.format(abc.z))
   );
-  
+  setCurrentABC(abc); // required for machine simulation
+
   onCommand(COMMAND_LOCK_MULTI_AXIS);
 
   currentWorkPlaneABC = abc;
@@ -1262,7 +1372,7 @@ function onRapid5D(_x, _y, _z, _a, _b, _c) {
   feedOutput.reset();
 }
 
-function onLinear5D(_x, _y, _z, _a, _b, _c, feed) {
+function onLinear5D(_x, _y, _z, _a, _b, _c, feed, feedMode) {
   if (!currentSection.isOptimizedForMachine()) {
     error(localize("This post configuration has not been customized for 5-axis simultaneous toolpath."));
     return;
@@ -1277,286 +1387,22 @@ function onLinear5D(_x, _y, _z, _a, _b, _c, feed) {
   var a = aOutput.format(_a);
   var b = bOutput.format(_b);
   var c = cOutput.format(_c);
-
-  // get feedrate number
-  var f = {frn:0, fmode:0};
-  if (a || b || c) {
-    f = getMultiaxisFeed(_x, _y, _z, _a, _b, _c, feed);
-    if (useInverseTimeFeed) {
-      f.frn = inverseTimeOutput.format(f.frn);
-    } else {
-      f.frn = feedOutput.format(f.frn);
-    }
-  } else {
-    f.frn = feedOutput.format(feed);
-    f.fmode = 94;
+  if (feedMode == FEED_INVERSE_TIME) {
+    feedOutput.reset();
   }
+  var f = feedMode == FEED_INVERSE_TIME ? inverseTimeOutput.format(feed) : feedOutput.format(feed);
+  var fMode = feedMode == FEED_INVERSE_TIME ? 93 : 94;
 
   if (x || y || z || a || b || c) {
-    writeBlock(gFeedModeModal.format(f.fmode), gMotionModal.format(1), x, y, z, a, b, c, f.frn);
+    writeBlock(gFeedModeModal.format(fMode), gMotionModal.format(1), x, y, z, a, b, c, f);
   } else if (f.frn) {
     if (getNextRecord().isMotion()) { // try not to output feed without motion
       feedOutput.reset(); // force feed on next line
     } else {
-      writeBlock(gFeedModeModal.format(f.fmode), gMotionModal.format(1), f.frn);
+      writeBlock(gFeedModeModal.format(f.fmode), gMotionModal.format(1), f);
     }
   }
 }
-
-// Start of multi-axis feedrate logic
-/***** You can add 'getProperty("useInverseTime'") if desired. *****/
-/***** 'previousABC' can be added throughout to maintain previous rotary positions. Required for Mill/Turn machines. *****/
-/***** 'headOffset' should be defined when a head rotary axis is defined. *****/
-/***** The feedrate mode must be included in motion block output (linear, circular, etc.) for Inverse Time feedrate support. *****/
-var dpmBPW = 0.1; // ratio of rotary accuracy to linear accuracy for DPM calculations
-var inverseTimeUnits = 1.0; // 1.0 = minutes, 60.0 = seconds
-var maxInverseTime = 99999.9999; // maximum value to output for Inverse Time feeds
-var maxDPM = 9999.99; // maximum value to output for DPM feeds
-var useInverseTimeFeed = true; // use 1/T feeds
-var inverseTimeFormat = createFormat({decimals:4, forceDecimal:true});
-var inverseTimeOutput = createVariable({prefix:"F", force:true}, inverseTimeFormat);
-var previousDPMFeed = 0; // previously output DPM feed
-var dpmFeedToler = 0.5; // tolerance to determine when the DPM feed has changed
-// var previousABC = new Vector(0, 0, 0); // previous ABC position if maintained in post, don't define if not used
-var forceOptimized = undefined; // used to override optimized-for-angles points (XZC-mode)
-
-/** Calculate the multi-axis feedrate number. */
-function getMultiaxisFeed(_x, _y, _z, _a, _b, _c, feed) {
-  var f = {frn:0, fmode:0};
-  if (feed <= 0) {
-    error(localize("Feedrate is less than or equal to 0."));
-    return f;
-  }
-  
-  var length = getMoveLength(_x, _y, _z, _a, _b, _c);
-  
-  if (useInverseTimeFeed) { // inverse time
-    f.frn = getInverseTime(length.tool, feed);
-    f.fmode = 93;
-    feedOutput.reset();
-  } else { // degrees per minute
-    f.frn = getFeedDPM(length, feed);
-    f.fmode = 94;
-  }
-  return f;
-}
-
-/** Returns point optimization mode. */
-function getOptimizedMode() {
-  if (forceOptimized != undefined) {
-    return forceOptimized;
-  }
-  // return (currentSection.getOptimizedTCPMode() != 0); // TAG:doesn't return correct value
-  return true; // always return false for non-TCP based heads
-}
-  
-/** Calculate the DPM feedrate number. */
-function getFeedDPM(_moveLength, _feed) {
-  if ((_feed == 0) || (_moveLength.tool < 0.0001) || (toDeg(_moveLength.abcLength) < 0.0005)) {
-    previousDPMFeed = 0;
-    return _feed;
-  }
-  var moveTime = _moveLength.tool / _feed;
-  if (moveTime == 0) {
-    previousDPMFeed = 0;
-    return _feed;
-  }
-
-  var dpmFeed;
-  var tcp = false; // !getOptimizedMode() && (forceOptimized == undefined);   // set to false for rotary heads
-  if (tcp) { // TCP mode is supported, output feed as FPM
-    dpmFeed = _feed;
-  } else if (false) { // standard DPM
-    dpmFeed = Math.min(toDeg(_moveLength.abcLength) / moveTime, maxDPM);
-    if (Math.abs(dpmFeed - previousDPMFeed) < dpmFeedToler) {
-      dpmFeed = previousDPMFeed;
-    }
-  } else if (true) { // combination FPM/DPM
-    var length = Math.sqrt(Math.pow(_moveLength.xyzLength, 2.0) + Math.pow((toDeg(_moveLength.abcLength) * dpmBPW), 2.0));
-    dpmFeed = Math.min((length / moveTime), maxDPM);
-    if (Math.abs(dpmFeed - previousDPMFeed) < dpmFeedToler) {
-      dpmFeed = previousDPMFeed;
-    }
-  } else { // machine specific calculation
-    dpmFeed = _feed;
-  }
-  previousDPMFeed = dpmFeed;
-  return dpmFeed;
-}
-
-/** Calculate the Inverse time feedrate number. */
-function getInverseTime(_length, _feed) {
-  var inverseTime;
-  if (_length < 1.e-6) { // tool doesn't move
-    if (typeof maxInverseTime === "number") {
-      inverseTime = maxInverseTime;
-    } else {
-      inverseTime = 999999;
-    }
-  } else {
-    inverseTime = _feed / _length / inverseTimeUnits;
-    if (typeof maxInverseTime === "number") {
-      if (inverseTime > maxInverseTime) {
-        inverseTime = maxInverseTime;
-      }
-    }
-  }
-  return inverseTime;
-}
-
-/** Calculate radius for each rotary axis. */
-function getRotaryRadii(startTool, endTool, startABC, endABC) {
-  var radii = new Vector(0, 0, 0);
-  var startRadius;
-  var endRadius;
-  var axis = new Array(machineConfiguration.getAxisU(), machineConfiguration.getAxisV(), machineConfiguration.getAxisW());
-  for (var i = 0; i < 3; ++i) {
-    if (axis[i].isEnabled()) {
-      var startRadius = getRotaryRadius(axis[i], startTool, startABC);
-      var endRadius = getRotaryRadius(axis[i], endTool, endABC);
-      radii.setCoordinate(axis[i].getCoordinate(), Math.max(startRadius, endRadius));
-    }
-  }
-  return radii;
-}
-
-/** Calculate the distance of the tool position to the center of a rotary axis. */
-function getRotaryRadius(axis, toolPosition, abc) {
-  if (!axis.isEnabled()) {
-    return 0;
-  }
-
-  var direction = axis.getEffectiveAxis();
-  var normal = direction.getNormalized();
-  // calculate the rotary center based on head/table
-  var center;
-  var radius;
-  if (axis.isHead()) {
-    var pivot;
-    if (typeof headOffset === "number") {
-      pivot = headOffset;
-    } else {
-      pivot = tool.getBodyLength();
-    }
-    if (axis.getCoordinate() == machineConfiguration.getAxisU().getCoordinate()) { // rider
-      center = Vector.sum(toolPosition, Vector.product(machineConfiguration.getDirection(abc), pivot));
-      center = Vector.sum(center, axis.getOffset());
-      radius = Vector.diff(toolPosition, center).length;
-    } else { // carrier
-      var angle = abc.getCoordinate(machineConfiguration.getAxisU().getCoordinate());
-      radius = Math.abs(pivot * Math.sin(angle));
-      radius += axis.getOffset().length;
-    }
-  } else {
-    center = axis.getOffset();
-    var d1 = toolPosition.x - center.x;
-    var d2 = toolPosition.y - center.y;
-    var d3 = toolPosition.z - center.z;
-    var radius = Math.sqrt(
-      Math.pow((d1 * normal.y) - (d2 * normal.x), 2.0) +
-      Math.pow((d2 * normal.z) - (d3 * normal.y), 2.0) +
-      Math.pow((d3 * normal.x) - (d1 * normal.z), 2.0)
-    );
-  }
-  return radius;
-}
-  
-/** Calculate the linear distance based on the rotation of a rotary axis. */
-function getRadialDistance(radius, startABC, endABC) {
-  // calculate length of radial move
-  var delta = Math.abs(endABC - startABC);
-  if (delta > Math.PI) {
-    delta = 2 * Math.PI - delta;
-  }
-  var radialLength = (2 * Math.PI * radius) * (delta / (2 * Math.PI));
-  return radialLength;
-}
-  
-/** Calculate tooltip, XYZ, and rotary move lengths. */
-function getMoveLength(_x, _y, _z, _a, _b, _c) {
-  // get starting and ending positions
-  var moveLength = {};
-  var startTool;
-  var endTool;
-  var startXYZ;
-  var endXYZ;
-  var startABC;
-  if (typeof previousABC !== "undefined") {
-    startABC = new Vector(previousABC.x, previousABC.y, previousABC.z);
-  } else {
-    startABC = getCurrentDirection();
-  }
-  var endABC = new Vector(_a, _b, _c);
-    
-  if (!getOptimizedMode()) { // calculate XYZ from tool tip
-    startTool = getCurrentPosition();
-    endTool = new Vector(_x, _y, _z);
-    startXYZ = startTool;
-    endXYZ = endTool;
-
-    // adjust points for tables
-    if (!machineConfiguration.getTableABC(startABC).isZero() || !machineConfiguration.getTableABC(endABC).isZero()) {
-      startXYZ = machineConfiguration.getOrientation(machineConfiguration.getTableABC(startABC)).getTransposed().multiply(startXYZ);
-      endXYZ = machineConfiguration.getOrientation(machineConfiguration.getTableABC(endABC)).getTransposed().multiply(endXYZ);
-    }
-
-    // adjust points for heads
-    if (machineConfiguration.getAxisU().isEnabled() && machineConfiguration.getAxisU().isHead()) {
-      if (typeof getOptimizedHeads === "function") { // use post processor function to adjust heads
-        startXYZ = getOptimizedHeads(startXYZ.x, startXYZ.y, startXYZ.z, startABC.x, startABC.y, startABC.z);
-        endXYZ = getOptimizedHeads(endXYZ.x, endXYZ.y, endXYZ.z, endABC.x, endABC.y, endABC.z);
-      } else { // guess at head adjustments
-        var startDisplacement = machineConfiguration.getDirection(startABC);
-        startDisplacement.multiply(headOffset);
-        var endDisplacement = machineConfiguration.getDirection(endABC);
-        endDisplacement.multiply(headOffset);
-        startXYZ = Vector.sum(startTool, startDisplacement);
-        endXYZ = Vector.sum(endTool, endDisplacement);
-      }
-    }
-  } else { // calculate tool tip from XYZ, heads are always programmed in TCP mode, so not handled here
-    startXYZ = getCurrentPosition();
-    endXYZ = new Vector(_x, _y, _z);
-    startTool = machineConfiguration.getOrientation(machineConfiguration.getTableABC(startABC)).multiply(startXYZ);
-    endTool = machineConfiguration.getOrientation(machineConfiguration.getTableABC(endABC)).multiply(endXYZ);
-  }
-
-  // calculate axes movements
-  moveLength.xyz = Vector.diff(endXYZ, startXYZ).abs;
-  moveLength.xyzLength = moveLength.xyz.length;
-  moveLength.abc = Vector.diff(endABC, startABC).abs;
-  for (var i = 0; i < 3; ++i) {
-    if (moveLength.abc.getCoordinate(i) > Math.PI) {
-      moveLength.abc.setCoordinate(i, 2 * Math.PI - moveLength.abc.getCoordinate(i));
-    }
-  }
-  moveLength.abcLength = moveLength.abc.length;
-
-  // calculate radii
-  moveLength.radius = getRotaryRadii(startTool, endTool, startABC, endABC);
-  
-  // calculate the radial portion of the tool tip movement
-  var radialLength = Math.sqrt(
-    Math.pow(getRadialDistance(moveLength.radius.x, startABC.x, endABC.x), 2.0) +
-    Math.pow(getRadialDistance(moveLength.radius.y, startABC.y, endABC.y), 2.0) +
-    Math.pow(getRadialDistance(moveLength.radius.z, startABC.z, endABC.z), 2.0)
-  );
-  
-  // calculate the tool tip move length
-  // tool tip distance is the move distance based on a combination of linear and rotary axes movement
-  moveLength.tool = moveLength.xyzLength + radialLength;
-
-  // debug
-  if (false) {
-    writeComment("DEBUG - tool   = " + moveLength.tool);
-    writeComment("DEBUG - xyz    = " + moveLength.xyz);
-    var temp = Vector.product(moveLength.abc, 180 / Math.PI);
-    writeComment("DEBUG - abc    = " + temp);
-    writeComment("DEBUG - radius = " + moveLength.radius);
-  }
-  return moveLength;
-}
-// End of multi-axis feedrate logic
 
 function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
   if (pendingRadiusCompensation >= 0) {
@@ -1784,6 +1630,51 @@ function writeRetract() {
     }
   }
 }
+
+// Start of onRewindMachine logic
+var performRewinds = false; // only use this setting with hardcoded machine configurations, set to true to enable the rewind/reconfigure logic
+var stockExpansion = new Vector(toPreciseUnit(0.1, IN), toPreciseUnit(0.1, IN), toPreciseUnit(0.1, IN)); // expand stock XYZ values
+safeRetractDistance = (unit == IN) ? 1 : 25; // additional distance to retract out of stock
+safeRetractFeed = (unit == IN) ? 20 : 500; // retract feed rate
+safePlungeFeed = (unit == IN) ? 10 : 250; // plunge feed rate
+
+/** Allow user to override the onRewind logic. */
+function onRewindMachineEntry(_a, _b, _c) {
+  return false;
+}
+
+/** Retract to safe position before indexing rotaries. */
+function onMoveToSafeRetractPosition() {
+  writeRetract(Z);
+}
+
+/** Rotate axes to new position above reentry position */
+function onRotateAxes(_x, _y, _z, _a, _b, _c) {
+  // position rotary axes
+  xOutput.disable();
+  yOutput.disable();
+  zOutput.disable();
+  invokeOnRapid5D(_x, _y, _z, _a, _b, _c);
+  setCurrentABC(new Vector(_a, _b, _c));
+  xOutput.enable();
+  yOutput.enable();
+  zOutput.enable();
+}
+
+/** Return from safe position after indexing rotaries. */
+function onReturnFromSafeRetractPosition(_x, _y, _z) {
+  // position in XY
+  forceXYZ();
+  xOutput.reset();
+  yOutput.reset();
+  zOutput.disable();
+  invokeOnRapid(_x, _y, _z);
+
+  // position in Z
+  zOutput.enable();
+  invokeOnRapid(_x, _y, _z);
+}
+// End of onRewindMachine logic
 
 function onClose() {
   writeln("");
