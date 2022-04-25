@@ -4,8 +4,8 @@
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 43565 21df9e93956e7164e5f6e81ec3f3fd72618f6775 $
-  $Date: 2021-12-13 22:54:16 $
+  $Revision: 43602 83ef305dbd685ac5903538365ed7de9a08636e84 $
+  $Date: 2022-01-21 00:04:52 $
 
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
@@ -229,6 +229,16 @@ properties = {
   }
 };
 
+// wcs definiton
+wcsDefinitions = {
+  useZeroOffset: false,
+  wcs          : [
+    {name:"Standard", format:"G", range:[54, 59]},
+    {name:"Extended", format:"G59.", range:[1, 3]},
+    {name:"Extra", format:"G54.1 P", range:[10, 500]}
+  ]
+};
+
 var permittedCommentChars = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,=_-*";
 
 var nFormat = createFormat({prefix:"N", decimals:0});
@@ -248,7 +258,6 @@ var secFormat = createFormat({decimals:3, forceDecimal:true}); // seconds - rang
 var milliFormat = createFormat({decimals:0}); // milliseconds // range 1-9999
 var taperFormat = createFormat({decimals:1, scale:DEG});
 var qFormat = createFormat({prefix:"Q", decimals:0});
-var pFormat = createFormat({prefix:"P", decimals:0});
 
 var xOutput = createVariable({prefix:"X"}, xyzFormat);
 var yOutput = createVariable({prefix:"Y"}, xyzFormat);
@@ -1006,33 +1015,12 @@ function onSection() {
   if (insertToolCall && getProperty("forceWorkOffset")) { // force work offset when changing tool
     currentWorkOffset = undefined;
   }
-  var workOffset = currentSection.workOffset;
-  if (workOffset == 0) {
-    warningOnce(localize("Work offset has not been specified. Using G54 as WCS."), WARNING_WORK_OFFSET);
-    workOffset = 1;
+
+  if (currentSection.workOffset != currentWorkOffset) {
+    writeBlock(currentSection.wcs);
+    currentWorkOffset = currentSection.workOffset;
   }
-  if (workOffset > 0) {
-    if (workOffset > 6) {
-      var p = workOffset; // 1->... // G59 P1 is the same as G54 and so on
-      if (p > 500) {
-        error(localize("Work offset out of range."));
-      }
-      if (workOffset != currentWorkOffset) {
-        if (p > 9) {
-          writeBlock(gFormat.format(54.1), pFormat.format(workOffset));
-        } else {
-          p = 59 + ((p - 6) / 10.0);
-          writeBlock(gFormat.format(p)); // G59.x
-        }
-        currentWorkOffset = workOffset;
-      }
-    } else {
-      if (workOffset != currentWorkOffset) {
-        writeBlock(gFormat.format(53 + workOffset)); // G54->G59
-        currentWorkOffset = workOffset;
-      }
-    }
-  }
+
   forceXYZ();
 
   if (machineConfiguration.isMultiAxisConfiguration()) { // use 5-axis indexing for multi-axis mode
