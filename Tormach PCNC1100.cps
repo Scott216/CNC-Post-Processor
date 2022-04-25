@@ -1,11 +1,11 @@
 /**
-  Copyright (C) 2012-2019 by Autodesk, Inc.
+  Copyright (C) 2012-2020 by Autodesk, Inc.
   All rights reserved.
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 42592 dd1963da4c13a3367dc4bcbd9323e2b7b1766d85 $
-  $Date: 2019-11-13 10:21:06 $
+  $Revision: 42637 47b32b14171c80925ea8aef8e69731816114cab3 $
+  $Date: 2020-01-28 08:08:25 $
   
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
@@ -13,7 +13,7 @@
 description = "Tormach PathPilot";
 vendor = "Tormach";
 vendorUrl = "http://www.tormach.com";
-legal = "Copyright (C) 2012-2019 by Autodesk, Inc.";
+legal = "Copyright (C) 2012-2020 by Autodesk, Inc.";
 certificationLevel = 2;
 minimumRevision = 40783;
 
@@ -151,7 +151,7 @@ var WARNING_WORK_OFFSET = 0;
 // collected state
 var sequenceNumber;
 var currentWorkOffset;
-var previousCoolantMode;
+var currentCoolantMode = COOLANT_OFF;
 var coolantZHeight;
 var masterAxis;
 var movementType;
@@ -750,6 +750,7 @@ function onSpindleSpeed(spindleSpeed) {
 function setCoolant(coolant, topOfPart) {
   var coolCodes = ["", "", "", ""];
   coolantZHeight = 9999.0;
+  var coolantCode = 9;
 
   if (properties.disableCoolant) {
     return coolCodes;
@@ -757,20 +758,21 @@ function setCoolant(coolant, topOfPart) {
   // Smart coolant is not enabled
   if (!properties.smartCoolEquipped) {
     if (coolant == COOLANT_OFF) {
-      previousCoolantMode = 9;
+      coolantCode = 9;
     } else {
-      previousCoolantMode = 8; // default all coolant modes to flood
+      coolantCode = 8; // default all coolant modes to flood
       if (coolant != COOLANT_FLOOD) {
         warning(localize("Unsupported coolant setting. Defaulting to FLOOD."));
       }
     }
-    coolCodes[0] = mFormat.format(previousCoolantMode);
+    coolCodes[0] = mFormat.format(coolantCode);
   } else { // Smart coolant is enabled
     if ((coolant == COOLANT_MIST) || (coolant == COOLANT_AIR)) {
-      previousCoolantMode = 7;
-      coolCodes[0] = mFormat.format(previousCoolantMode);
+      coolantCode = 7;
+      coolCodes[0] = mFormat.format(coolantCode);
     } else if (coolant == COOLANT_FLOOD_MIST) { // flood with air blast
-      previousCoolantMode = 8;
+      coolantCode = 8;
+      coolCodes[0] = mFormat.format(coolantCode);
       if (properties.multiCoolEquipped) {
         if (properties.multiCoolAirBlastSeconds != 0) {
           coolCodes[3] = qFormat.format(properties.multiCoolAirBlastSeconds);
@@ -779,11 +781,11 @@ function setCoolant(coolant, topOfPart) {
         warning(localize("COOLANT_FLOOD_MIST programmed without Multi-Coolant support. Defaulting to FLOOD."));
       }
     } else if (coolant == COOLANT_OFF) {
-      previousCoolantMode = 9;
-      coolCodes[0] = mFormat.format(previousCoolantMode);
+      coolantCode = 9;
+      coolCodes[0] = mFormat.format(coolantCode);
     } else {
-      previousCoolantMode = 8;
-      coolCodes[0] = mFormat.format(previousCoolantMode);
+      coolantCode = 8;
+      coolCodes[0] = mFormat.format(coolantCode);
       if (coolant != COOLANT_FLOOD) {
         warning(localize("Unsupported coolant setting. Defaulting to FLOOD."));
       }
@@ -825,6 +827,7 @@ function setCoolant(coolant, topOfPart) {
     }
   }
 
+  currentCoolantMode = coolant;
   return coolCodes;
 }
 
@@ -861,9 +864,9 @@ function onCyclePoint(x, y, z) {
 
     // Adjust SmartCool to top of part if it changes
     if (properties.smartCoolEquipped && xyzFormat.areDifferent((z + cycle.depth), coolantZHeight)) {
-      var c = setCoolant(previousCoolantMode, z + cycle.depth);
+      var c = setCoolant(currentCoolantMode, z + cycle.depth);
       if (c) {
-        writeBlock(c[0], c[1], c[2]);
+        writeBlock(c[0], c[1], c[2], c[3]);
       }
     }
 
