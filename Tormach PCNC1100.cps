@@ -4,8 +4,8 @@
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 43151 08c79bb5b30997ccb5fb33ab8e7c8c26981be334 $
-  $Date: 2021-02-19 00:25:13 $
+  $Revision: 43184 e4129b6ddd945cb26205c99f0167363a0fa2772e $
+  $Date: 2021-03-15 18:00:40 $
   
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
@@ -1054,7 +1054,7 @@ function onCyclePoint(x, y, z) {
         writeBlock(
           gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format((tool.type == TOOL_TAP_LEFT_HAND) ? 74 : 84),
           getCommonCycle(x, y, z, cycle.retract),
-          conditional(P > 0, "P" + secFormat.format(P)),
+          "P" + secFormat.format(P), // dwell is required
           feedOutput.format(F)
         );
       }
@@ -1069,7 +1069,7 @@ function onCyclePoint(x, y, z) {
         writeBlock(
           gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(74),
           getCommonCycle(x, y, z, cycle.retract),
-          conditional(P > 0, "P" + secFormat.format(P)),
+          "P" + secFormat.format(P), // dwell is required
           feedOutput.format(F)
         );
       }
@@ -1084,7 +1084,7 @@ function onCyclePoint(x, y, z) {
         writeBlock(
           gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(84),
           getCommonCycle(x, y, z, cycle.retract),
-          conditional(P > 0, "P" + secFormat.format(P)),
+          "P" + secFormat.format(P), // dwell is required
           feedOutput.format(F)
         );
       }
