@@ -4,9 +4,9 @@
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 43430 d6073c4eca6942dd8f614cc9949500f0002674f7 $
-  $Date: 2021-09-16 08:06:38 $
-  
+  $Revision: 43495 e984b553da9e215d55234eb8340d2a85620658fa $
+  $Date: 2021-11-02 10:30:11 $
+
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
 
@@ -36,196 +36,196 @@ allowedCircularPlanes = undefined; // allow any circular motion
 // user-defined properties
 properties = {
   writeMachine: {
-    title: "Write machine",
+    title      : "Write machine",
     description: "Output the machine settings in the header of the code.",
-    group: 0,
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : 0,
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   writeTools: {
-    title: "Write tool list",
+    title      : "Write tool list",
     description: "Output a tool list in the header of the code.",
-    group: 0,
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : 0,
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   writeVersion: {
-    title: "Write version",
+    title      : "Write version",
     description: "Write the version number in the header of the code.",
-    group: 0,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 0,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   safePositionMethod: {
-    title: "Safe Retracts",
+    title      : "Safe Retracts",
     description: "Select your desired retract option. 'Clearance Height' retracts to the operation clearance height.",
-    type: "enum",
-    values: [
-      {title: "G28", id: "G28"},
+    type       : "enum",
+    values     : [
+      {title:"G28", id:"G28"},
       // {title: "G53", id: "G53"},
-      {title: "Clearance Height", id: "clearanceHeight"},
-      {title: "G30", id: "G30"},
-      {title: "G28 & G30", id: "G28G30"}
+      {title:"Clearance Height", id:"clearanceHeight"},
+      {title:"G30", id:"G30"},
+      {title:"G28 & G30", id:"G28G30"}
     ],
     value: "G30",
     scope: "post"
   },
   useM6: {
-    title: "Use M6",
+    title      : "Use M6",
     description: "Disable to avoid outputting M6.",
-    group: 1,
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : 1,
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   showSequenceNumbers: {
-    title: "Use sequence numbers",
+    title      : "Use sequence numbers",
     description: "Use sequence numbers for each block of outputted code.",
-    group: 1,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 1,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   sequenceNumberStart: {
-    title: "Start sequence number",
+    title      : "Start sequence number",
     description: "The number at which to start the sequence numbers.",
-    group: 1,
-    type: "integer",
-    value: 10,
-    scope: "post"
+    group      : 1,
+    type       : "integer",
+    value      : 10,
+    scope      : "post"
   },
   sequenceNumberIncrement: {
-    title: "Sequence number increment",
+    title      : "Sequence number increment",
     description: "The amount by which the sequence number is incremented by in each block.",
-    group: 1,
-    type: "integer",
-    value: 10,
-    scope: "post"
+    group      : 1,
+    type       : "integer",
+    value      : 10,
+    scope      : "post"
   },
   sequenceNumberOperation: {
-    title: "Sequence number at operation only",
+    title      : "Sequence number at operation only",
     description: "Use sequence numbers at start of operation only.",
-    group: 1,
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : 1,
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   optionalStopTool: {
-    title: "Optional stop between tools",
+    title      : "Optional stop between tools",
     description: "Outputs optional stop code prior to a tool change.",
-    type: "boolean",
-    value: true,
-    scope: "post"
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   optionalStopOperation: {
-    title: "Optional stop between operations",
+    title      : "Optional stop between operations",
     description: "Outputs optional stop code prior between all operations.",
-    type: "boolean",
-    value: false,
-    scope: "post"
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   separateWordsWithSpace: {
-    title: "Separate words with space",
+    title      : "Separate words with space",
     description: "Adds spaces between words if 'yes' is selected.",
-    type: "boolean",
-    value: true,
-    scope: "post"
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   useRadius: {
-    title: "Radius arcs",
+    title      : "Radius arcs",
     description: "If yes is selected, arcs are outputted using radius values rather than IJK.",
-    type: "boolean",
-    value: false,
-    scope: "post"
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   dwellInSeconds: {
-    title: "Dwell in seconds",
+    title      : "Dwell in seconds",
     description: "Specifies the unit for dwelling, set to 'Yes' for seconds and 'No' for milliseconds.",
-    type: "boolean",
-    value: true,
-    scope: "post"
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   forceWorkOffset: {
-    title: "Force work offset",
+    title      : "Force work offset",
     description: "Forces the work offset code at tool changes.",
-    type: "boolean",
-    value: false,
-    scope: "post"
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   rotaryTableAxis: {
-    title: "Rotary table axis",
+    title      : "Rotary table axis",
     description: "Select rotary table axis. Check the table direction on the machine and use the (Reversed) selection if the table is moving in the opposite direction.",
-    type: "enum",
-    values: [
-      {title: "No rotary", id: "none"},
-      {title: "X", id: "x"},
-      {title: "Y", id: "y"},
-      {title: "Z", id: "z"},
-      {title: "X (Reversed)", id: "-x"},
-      {title: "Y (Reversed)", id: "-y"},
-      {title: "Z (Reversed)", id: "-z"}
+    type       : "enum",
+    values     : [
+      {title:"No rotary", id:"none"},
+      {title:"X", id:"x"},
+      {title:"Y", id:"y"},
+      {title:"Z", id:"z"},
+      {title:"X (Reversed)", id:"-x"},
+      {title:"Y (Reversed)", id:"-y"},
+      {title:"Z (Reversed)", id:"-z"}
     ],
     value: "none",
     scope: "post"
   },
   smartCoolEquipped: {
-    title: "SmartCool equipped",
+    title      : "SmartCool equipped",
     description: "Specifies if the machine has the SmartCool attachment.",
-    type: "boolean",
-    value: false,
-    scope: "post"
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   multiCoolEquipped: {
-    title: "Multi-Coolant equipped",
+    title      : "Multi-Coolant equipped",
     description: "Specifies if the machine has the Multi-Coolant module.",
-    type: "boolean",
-    value: false,
-    scope: "post"
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   smartCoolToolSweepPercentage: {
-    title: "SmartCool sweep percentage",
+    title      : "SmartCool sweep percentage",
     description: "Sets the tool length percentage to sweep coolant.",
-    type: "integer",
-    value: 100,
-    scope: "post"
+    type       : "integer",
+    value      : 100,
+    scope      : "post"
   },
   multiCoolAirBlastSeconds: {
-    title: "Multi-Coolant air blast in seconds",
+    title      : "Multi-Coolant air blast in seconds",
     description: "Sets the Multi-Coolant air blast time in seconds.",
-    type: "integer",
-    value: 4,
-    scope: "post"
+    type       : "integer",
+    value      : 4,
+    scope      : "post"
   },
   disableCoolant: {
-    title: "Disable coolant",
+    title      : "Disable coolant",
     description: "Disable all coolant codes.",
-    type: "boolean",
-    value: false,
-    scope: "post"
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   reversingHead: {
-    title: "Use self-reversing tapping head",
+    title      : "Use self-reversing tapping head",
     description: "Expanded cycles are output with a self-reversing tapping head.",
-    type: "boolean",
-    value: false,
-    scope: "post"
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   reversingHeadFeed: {
-    title: "Self-reversing head feed ratio",
+    title      : "Self-reversing head feed ratio",
     description: "The percentage of the tapping feedrate for retracting the tool.",
-    type: "number",
-    value: 2,
-    scope: "post"
+    type       : "number",
+    value      : 2,
+    scope      : "post"
   },
   maxTool: {
-    title: "Maximum tool number",
+    title      : "Maximum tool number",
     description: "Enter the maximum tool number allowed by the control.",
-    type: "number",
-    value: 256,
-    scope: "post"
+    type       : "number",
+    value      : 256,
+    scope      : "post"
   }
 };
 
@@ -464,7 +464,7 @@ function defineMachine() {
       var aAxis = createAxis({coordinate:0, table:true, axis:[1, 0, 0], range:[-120, 120], preference:1, tcp:true});
       var cAxis = createAxis({coordinate:2, table:true, axis:[0, 0, 1], range:[-360, 360], preference:0, tcp:true});
       machineConfiguration = new MachineConfiguration(aAxis, cAxis);
-  
+
       setMachineConfiguration(machineConfiguration);
       if (receivedMachineConfiguration) {
         warning(localize("The provided CAM machine configuration is overwritten by the postprocessor."));
@@ -570,7 +570,7 @@ function onOpen() {
       }
     }
   }
-  
+
   if (false) {
     // check for duplicate tool number
     for (var i = 0; i < getNumberOfSections(); ++i) {
@@ -774,7 +774,7 @@ function getWorkPlaneMachineABC(workPlane) {
   } else {
     abc = machineConfiguration.getPreferredABC(abc);
   }
-  
+
   try {
     abc = machineConfiguration.remapABC(abc);
   } catch (e) {
@@ -785,12 +785,12 @@ function getWorkPlaneMachineABC(workPlane) {
       + conditional(machineConfiguration.isMachineCoordinate(2), " C" + abcFormat.format(abc.z))
     );
   }
-  
+
   var direction = machineConfiguration.getDirection(abc);
   if (!isSameDirection(direction, W.forward)) {
     error(localize("Orientation not supported."));
   }
-  
+
   if (!machineConfiguration.isABCSupported(abc)) {
     error(
       localize("Work plane is not supported") + ":"
@@ -875,7 +875,7 @@ function onSection() {
   var insertToolCall = isFirstSection() ||
     currentSection.getForceToolChange && currentSection.getForceToolChange() ||
     (tool.number != getPreviousSection().getTool().number);
-  
+
   retracted = false; // specifies that the tool has been retracted to the safe plane
   var newWorkOffset = isFirstSection() ||
     (getPreviousSection().workOffset != currentSection.workOffset); // work offset changes
@@ -915,7 +915,7 @@ function onSection() {
     if (tool.number > getProperty("maxTool")) {
       warning(localize("Tool number exceeds maximum value."));
     }
-    
+
     var lengthOffset = tool.lengthOffset;
     if (lengthOffset > getProperty("maxTool")) {
       error(localize("Length offset out of range."));
@@ -951,7 +951,7 @@ function onSection() {
       }
     }
   }
-  
+
   // Define coolant code
   var topOfPart = undefined;
   if (hasParameter("operation:surfaceZHigh")) {
@@ -1054,7 +1054,7 @@ function onSection() {
 
     gMotionModal.reset();
     writeBlock(gPlaneModal.format(17));
-    
+
     if (!machineConfiguration.isHeadConfiguration()) {
       writeBlock(
         gAbsIncModal.format(90),
@@ -1116,6 +1116,8 @@ function setCoolant(coolant, topOfPart) {
   if (!getProperty("smartCoolEquipped")) {
     if (coolant == COOLANT_OFF) {
       coolantCode = 9;
+    } else if (coolant == COOLANT_MIST) {
+      coolantCode = 7;
     } else {
       coolantCode = 8; // default all coolant modes to flood
       if (coolant != COOLANT_FLOOD) {
@@ -1213,7 +1215,7 @@ function onCyclePoint(x, y, z) {
 
   if (isFirstCyclePoint()) {
     repositionToCycleClearance(cycle, x, y, z);
-    
+
     // return to initial Z which is clearance plane and set absolute mode
 
     var F = cycle.feedrate;
@@ -1600,16 +1602,16 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
 }
 
 var mapCommand = {
-  COMMAND_STOP:0,
-  COMMAND_OPTIONAL_STOP:1,
-  COMMAND_END:2,
-  COMMAND_SPINDLE_CLOCKWISE:3,
-  COMMAND_SPINDLE_COUNTERCLOCKWISE:4,
-  COMMAND_STOP_SPINDLE:5,
-  COMMAND_ORIENTATE_SPINDLE:19,
-  COMMAND_LOAD_TOOL:6,
-  COMMAND_COOLANT_ON:8, // flood
-  COMMAND_COOLANT_OFF:9
+  COMMAND_STOP                    : 0,
+  COMMAND_OPTIONAL_STOP           : 1,
+  COMMAND_END                     : 2,
+  COMMAND_SPINDLE_CLOCKWISE       : 3,
+  COMMAND_SPINDLE_COUNTERCLOCKWISE: 4,
+  COMMAND_STOP_SPINDLE            : 5,
+  COMMAND_ORIENTATE_SPINDLE       : 19,
+  COMMAND_LOAD_TOOL               : 6,
+  COMMAND_COOLANT_ON              : 8, // flood
+  COMMAND_COOLANT_OFF             : 9
 };
 
 function onCommand(command) {
@@ -1626,7 +1628,7 @@ function onCommand(command) {
   case COMMAND_TOOL_MEASURE:
     return;
   }
-  
+
   var stringId = getCommandStringId(command);
   var mcode = mapCommand[stringId];
   if (mcode != undefined) {
@@ -1642,14 +1644,14 @@ function onSectionEnd() {
   if (currentSection.isMultiAxis()) {
     writeBlock(gFeedModeModal.format(94)); // inverse time feed off
   }
-  
+
   if (((getCurrentSectionId() + 1) >= getNumberOfSections()) ||
       (tool.number != getNextSection().getTool().number)) {
     onCommand(COMMAND_BREAK_CONTROL);
   }
 
   forceAny();
-  
+
   if (((getCurrentSectionId() + 1) >= getNumberOfSections()) ||
       (tool.number != getNextSection().getTool().number)) {
     writeBlock(
