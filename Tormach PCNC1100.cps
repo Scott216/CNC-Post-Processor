@@ -4,8 +4,8 @@
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 43554 a19c569c9f7fe055fc222095112d3f1eebc74b63 $
-  $Date: 2021-12-02 17:56:05 $
+  $Revision: 43565 21df9e93956e7164e5f6e81ec3f3fd72618f6775 $
+  $Date: 2021-12-13 22:54:16 $
 
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
@@ -15,7 +15,7 @@ vendor = "Tormach";
 vendorUrl = "http://www.tormach.com";
 legal = "Copyright (C) 2012-2021 by Autodesk, Inc.";
 certificationLevel = 2;
-minimumRevision = 45702;
+minimumRevision = 45793;
 
 longDescription = "Tormach PathPilot post for 3-axis and 4-axis milling with SmartCool support.";
 
@@ -340,28 +340,14 @@ function parseChoice() {
 
 // Start of machine configuration logic
 var compensateToolLength = false; // add the tool length to the pivot distance for nonTCP rotary heads
-var virtualTooltip = false; // translate the pivot point to the virtual tool tip for nonTCP rotary heads
+
 // internal variables, do not change
 var receivedMachineConfiguration;
-var tcpIsSupported;
+var operationSupportsTCP;
+var multiAxisFeedrate;
 
 function activateMachine() {
-  // determine if TCP is supported by the machine
-  tcpIsSupported = false;
-  var axes = [machineConfiguration.getAxisU(), machineConfiguration.getAxisV(), machineConfiguration.getAxisW()];
-  for (var i in axes) {
-    if (axes[i].isEnabled() && axes[i].isTCPEnabled()) {
-      tcpIsSupported = true;
-      break;
-    }
-  }
-
-  // setup usage of multiAxisFeatures
-  useMultiAxisFeatures = getProperty("useMultiAxisFeatures") != undefined ? getProperty("useMultiAxisFeatures") :
-    (typeof useMultiAxisFeatures != "undefined" ? useMultiAxisFeatures : false);
-  useABCPrepositioning = getProperty("useABCPrepositioning") != undefined ? getProperty("useABCPrepositioning") :
-    (typeof useABCPrepositioning != "undefined" ? useABCPrepositioning : false);
-
+  // disable unsupported rotary axes output
   if (!machineConfiguration.isMachineCoordinate(0) && (typeof aOutput != "undefined")) {
     aOutput.disable();
   }
@@ -372,56 +358,52 @@ function activateMachine() {
     cOutput.disable();
   }
 
+  // setup usage of multiAxisFeatures
+  useMultiAxisFeatures = getProperty("useMultiAxisFeatures") != undefined ? getProperty("useMultiAxisFeatures") :
+    (typeof useMultiAxisFeatures != "undefined" ? useMultiAxisFeatures : false);
+  useABCPrepositioning = getProperty("useABCPrepositioning") != undefined ? getProperty("useABCPrepositioning") :
+    (typeof useABCPrepositioning != "undefined" ? useABCPrepositioning : false);
+
   if (!machineConfiguration.isMultiAxisConfiguration()) {
     return; // don't need to modify any settings for 3-axis machines
   }
 
-  // retract/reconfigure
-  safeRetractDistance = getProperty("safeRetractDistance") != undefined ? getProperty("safeRetractDistance") :
-    (typeof safeRetractDistance == "number" ? safeRetractDistance : 0);
-  if (machineConfiguration.performRewinds() || (typeof performRewinds == "undefined" ? false : performRewinds)) {
-    machineConfiguration.enableMachineRewinds(); // enables the rewind/reconfigure logic
-    if (typeof stockExpansion != "undefined") {
-      machineConfiguration.setRewindStockExpansion(stockExpansion);
-      if (!receivedMachineConfiguration) {
-        setMachineConfiguration(machineConfiguration);
-      }
-    }
+  // save multi-axis feedrate settings from machine configuration
+  var mode = machineConfiguration.getMultiAxisFeedrateMode();
+  var type = mode == FEED_INVERSE_TIME ? machineConfiguration.getMultiAxisFeedrateInverseTimeUnits() :
+    (mode == FEED_DPM ? machineConfiguration.getMultiAxisFeedrateDPMType() : DPM_STANDARD);
+  multiAxisFeedrate = {
+    mode     : mode,
+    maximum  : machineConfiguration.getMultiAxisFeedrateMaximum(),
+    type     : type,
+    tolerance: mode == FEED_DPM ? machineConfiguration.getMultiAxisFeedrateOutputTolerance() : 0,
+    bpwRatio : mode == FEED_DPM ? machineConfiguration.getMultiAxisFeedrateBpwRatio() : 1
+  };
+
+  // setup of retract/reconfigure  TAG: Only needed until post kernel supports these machine config settings
+  if (receivedMachineConfiguration && machineConfiguration.performRewinds()) {
+    safeRetractDistance = machineConfiguration.getSafeRetractDistance();
+    safePlungeFeed = machineConfiguration.getSafePlungeFeedrate();
+    safeRetractFeed = machineConfiguration.getSafeRetractFeedrate();
+  }
+  if (typeof safeRetractDistance == "number" && getProperty("safeRetractDistance") != undefined && getProperty("safeRetractDistance") != 0) {
+    safeRetractDistance = getProperty("safeRetractDistance");
   }
 
   if (machineConfiguration.isHeadConfiguration()) {
     compensateToolLength = typeof compensateToolLength == "undefined" ? false : compensateToolLength;
-    virtualTooltip = typeof virtualTooltip == "undefined" ? false : virtualTooltip;
-    machineConfiguration.setVirtualTooltip(virtualTooltip);
   }
-  setFeedrateMode();
 
   if (machineConfiguration.isHeadConfiguration() && compensateToolLength) {
     for (var i = 0; i < getNumberOfSections(); ++i) {
       var section = getSection(i);
       if (section.isMultiAxis()) {
         machineConfiguration.setToolLength(getBodyLength(section.getTool())); // define the tool length for head adjustments
-        section.optimizeMachineAnglesByMachine(machineConfiguration, tcpIsSupported ? 0 : 1);
+        section.optimizeMachineAnglesByMachine(machineConfiguration, OPTIMIZE_AXIS);
       }
     }
   } else {
-    optimizeMachineAngles2(tcpIsSupported ? 0 : 1);
-  }
-}
-
-function setFeedrateMode(reset) {
-  if ((tcpIsSupported && !reset) || !machineConfiguration.isMultiAxisConfiguration()) {
-    return;
-  }
-  machineConfiguration.setMultiAxisFeedrate(
-    tcpIsSupported ? FEED_FPM : FEED_INVERSE_TIME,
-    99999.9999, // maximum output value for inverse time feed rates
-    INVERSE_MINUTES, // can be INVERSE_SECONDS or DPM_COMBINATION for DPM feeds
-    0.5, // tolerance to determine when the DPM feed has changed
-    1.0 // ratio of rotary accuracy to linear accuracy for DPM calculations
-  );
-  if (!receivedMachineConfiguration || (revision < 45765)) {
-    setMachineConfiguration(machineConfiguration);
+    optimizeMachineAngles2(OPTIMIZE_AXIS);
   }
 }
 
@@ -436,6 +418,7 @@ function getBodyLength(tool) {
 }
 
 function defineMachine() {
+  var useTCP = false;
   if (getProperty("rotaryTableAxis") != "none") {
     // Define rotary attributes from properties
     var rotary = parseChoice(getProperty("rotaryTableAxis"), "-Z", "-Y", "-X", "NONE", "X", "Y", "Z");
@@ -450,7 +433,7 @@ function defineMachine() {
     if (masterAxis >= 0) {
       var rotaryVector = [0, 0, 0];
       rotaryVector[masterAxis] = rotary / Math.abs(rotary);
-      var aAxis = createAxis({coordinate:0, table:true, axis:rotaryVector, cyclic:true, preference:0, tcp:false, reset:3});
+      var aAxis = createAxis({coordinate:0, table:true, axis:rotaryVector, cyclic:true, preference:0, tcp:useTCP, reset:3});
       machineConfiguration = new MachineConfiguration(aAxis);
 
       setMachineConfiguration(machineConfiguration);
@@ -461,8 +444,8 @@ function defineMachine() {
     }
   } else {
     if (false) { // note: setup your machine here
-      var aAxis = createAxis({coordinate:0, table:true, axis:[1, 0, 0], range:[-120, 120], preference:1, tcp:true});
-      var cAxis = createAxis({coordinate:2, table:true, axis:[0, 0, 1], range:[-360, 360], preference:0, tcp:true});
+      var aAxis = createAxis({coordinate:0, table:true, axis:[1, 0, 0], range:[-120, 120], preference:1, tcp:useTCP});
+      var cAxis = createAxis({coordinate:2, table:true, axis:[0, 0, 1], range:[-360, 360], preference:0, tcp:useTCP});
       machineConfiguration = new MachineConfiguration(aAxis, cAxis);
 
       setMachineConfiguration(machineConfiguration);
@@ -472,16 +455,51 @@ function defineMachine() {
       }
     }
   }
-  /* home positions */
-  // machineConfiguration.setHomePositionX(toPreciseUnit(0, IN));
-  // machineConfiguration.setHomePositionY(toPreciseUnit(0, IN));
-  // machineConfiguration.setRetractPlane(toPreciseUnit(0, IN));
+
+  if (!receivedMachineConfiguration) {
+    // multiaxis settings
+    if (machineConfiguration.isHeadConfiguration()) {
+      machineConfiguration.setVirtualTooltip(false); // translate the pivot point to the virtual tool tip for nonTCP rotary heads
+    }
+
+    // retract / reconfigure
+    var performRewinds = false; // set to true to enable the rewind/reconfigure logic
+    if (performRewinds) {
+      machineConfiguration.enableMachineRewinds(); // enables the retract/reconfigure logic
+      safeRetractDistance = (unit == IN) ? 1 : 25; // additional distance to retract out of stock, can be overridden with a property
+      safeRetractFeed = (unit == IN) ? 20 : 500; // retract feed rate
+      safePlungeFeed = (unit == IN) ? 10 : 250; // plunge feed rate
+      machineConfiguration.setSafeRetractDistance(safeRetractDistance);
+      machineConfiguration.setSafeRetractFeedrate(safeRetractFeed);
+      machineConfiguration.setSafePlungeFeedrate(safePlungeFeed);
+      var stockExpansion = new Vector(toPreciseUnit(0.1, IN), toPreciseUnit(0.1, IN), toPreciseUnit(0.1, IN)); // expand stock XYZ values
+      machineConfiguration.setRewindStockExpansion(stockExpansion);
+    }
+
+    // multi-axis feedrates
+    if (machineConfiguration.isMultiAxisConfiguration()) {
+      machineConfiguration.setMultiAxisFeedrate(
+        useTCP ? FEED_FPM : getProperty("useDPMFeeds") ? FEED_DPM : FEED_INVERSE_TIME,
+        99999.9999, // maximum output value for inverse time feed rates
+        getProperty("useDPMFeeds") ? DPM_COMBINATION : INVERSE_MINUTES, // INVERSE_MINUTES/INVERSE_SECONDS or DPM_COMBINATION/DPM_STANDARD
+        0.5, // tolerance to determine when the DPM feed has changed
+        1.0 // ratio of rotary accuracy to linear accuracy for DPM calculations
+      );
+      setMachineConfiguration(machineConfiguration);
+    }
+
+    /* home positions */
+    // machineConfiguration.setHomePositionX(toPreciseUnit(0, IN));
+    // machineConfiguration.setHomePositionY(toPreciseUnit(0, IN));
+    // machineConfiguration.setRetractPlane(toPreciseUnit(0, IN));
+  }
 }
 // End of machine configuration logic
 
 function onOpen() {
-  receivedMachineConfiguration = (typeof machineConfiguration.isReceived == "function") ? machineConfiguration.isReceived() :
-    ((machineConfiguration.getDescription() != "") || machineConfiguration.isMultiAxisConfiguration());
+  // define and enable machine configuration
+  receivedMachineConfiguration = machineConfiguration.isReceived();
+
   if (typeof defineMachine == "function") {
     defineMachine(); // hardcoded machine configuration
   }
@@ -1033,6 +1051,10 @@ function onSection() {
       return;
     }
     setRotation(remaining);
+  }
+
+  if (currentSection) {
+    operationSupportsTCP = (currentSection.isMultiAxis() || !useMultiAxisFeatures) && currentSection.getOptimizedTCPMode() == OPTIMIZE_NONE;
   }
 
   forceXYZ();
@@ -1760,12 +1782,6 @@ function writeRetract() {
 }
 
 // Start of onRewindMachine logic
-var performRewinds = false; // only use this setting with hardcoded machine configurations, set to true to enable the rewind/reconfigure logic
-var stockExpansion = new Vector(toPreciseUnit(0.1, IN), toPreciseUnit(0.1, IN), toPreciseUnit(0.1, IN)); // expand stock XYZ values
-safeRetractDistance = (unit == IN) ? 1 : 25; // additional distance to retract out of stock
-safeRetractFeed = (unit == IN) ? 20 : 500; // retract feed rate
-safePlungeFeed = (unit == IN) ? 10 : 250; // plunge feed rate
-
 /** Allow user to override the onRewind logic. */
 function onRewindMachineEntry(_a, _b, _c) {
   return false;
