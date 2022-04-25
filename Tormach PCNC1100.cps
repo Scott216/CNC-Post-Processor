@@ -1,11 +1,11 @@
 /**
-  Copyright (C) 2012-2018 by Autodesk, Inc.
+  Copyright (C) 2012-2019 by Autodesk, Inc.
   All rights reserved.
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 42473 905303e8374380273c82d214b32b7e80091ba92e $
-  $Date: 2019-09-04 07:46:02 $
+  $Revision: 42592 dd1963da4c13a3367dc4bcbd9323e2b7b1766d85 $
+  $Date: 2019-11-13 10:21:06 $
   
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
@@ -13,7 +13,7 @@
 description = "Tormach PathPilot";
 vendor = "Tormach";
 vendorUrl = "http://www.tormach.com";
-legal = "Copyright (C) 2012-2018 by Autodesk, Inc.";
+legal = "Copyright (C) 2012-2019 by Autodesk, Inc.";
 certificationLevel = 2;
 minimumRevision = 40783;
 
@@ -664,6 +664,7 @@ function onSection() {
     if (currentSection.isMultiAxis()) {
       forceWorkPlane();
       cancelTransformation();
+      abc = currentSection.getInitialToolAxisABC();
     } else {
       abc = getWorkPlaneMachineABC(currentSection.workPlane);
     }
