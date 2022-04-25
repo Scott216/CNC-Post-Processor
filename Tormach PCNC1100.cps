@@ -1,11 +1,11 @@
 /**
-  Copyright (C) 2012-2020 by Autodesk, Inc.
+  Copyright (C) 2012-2021 by Autodesk, Inc.
   All rights reserved.
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 43033 7e57a1fe748d1d22308c743d193446a5137d6b21 $
-  $Date: 2020-11-23 17:05:38 $
+  $Revision: 43103 5d04a6a490cfa2337a80ed7101df0e6aae1ec9ad $
+  $Date: 2021-01-11 23:14:50 $
   
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
@@ -13,7 +13,7 @@
 description = "Tormach PathPilot";
 vendor = "Tormach";
 vendorUrl = "http://www.tormach.com";
-legal = "Copyright (C) 2012-2020 by Autodesk, Inc.";
+legal = "Copyright (C) 2012-2021 by Autodesk, Inc.";
 certificationLevel = 2;
 minimumRevision = 40783;
 
@@ -131,6 +131,7 @@ var secFormat = createFormat({decimals:3, forceDecimal:true}); // seconds - rang
 var milliFormat = createFormat({decimals:0}); // milliseconds // range 1-9999
 var taperFormat = createFormat({decimals:1, scale:DEG});
 var qFormat = createFormat({prefix:"Q", decimals:0});
+var pFormat = createFormat({prefix:"P", decimals:0});
 
 var xOutput = createVariable({prefix:"X"}, xyzFormat);
 var yOutput = createVariable({prefix:"Y"}, xyzFormat);
@@ -647,14 +648,17 @@ function onSection() {
   if (workOffset > 0) {
     if (workOffset > 6) {
       var p = workOffset; // 1->... // G59 P1 is the same as G54 and so on
-      if (p > 9) {
+      if (p > 500) {
         error(localize("Work offset out of range."));
-      } else {
-        if (workOffset != currentWorkOffset) {
+      }
+      if (workOffset != currentWorkOffset) {
+        if (p > 9) {
+          writeBlock(gFormat.format(54.1), pFormat.format(workOffset));
+        } else {
           p = 59 + ((p - 6) / 10.0);
           writeBlock(gFormat.format(p)); // G59.x
-          currentWorkOffset = workOffset;
         }
+        currentWorkOffset = workOffset;
       }
     } else {
       if (workOffset != currentWorkOffset) {
@@ -663,7 +667,6 @@ function onSection() {
       }
     }
   }
-
   forceXYZ();
 
   if (machineConfiguration.isMultiAxisConfiguration()) { // use 5-axis indexing for multi-axis mode
@@ -933,7 +936,7 @@ function onCyclePoint(x, y, z) {
         }
         writeBlock(sOutput.format(spindleSpeed));
         writeBlock(
-          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(84),
+          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format((tool.type == TOOL_TAP_LEFT_HAND) ? 74 : 84),
           getCommonCycle(x, y, z, cycle.retract),
           conditional(P > 0, "P" + secFormat.format(P)),
           feedOutput.format(F)
@@ -948,7 +951,7 @@ function onCyclePoint(x, y, z) {
           F = tool.getTappingFeedrate();
         }
         writeBlock(
-          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(84),
+          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(74),
           getCommonCycle(x, y, z, cycle.retract),
           conditional(P > 0, "P" + secFormat.format(P)),
           feedOutput.format(F)
