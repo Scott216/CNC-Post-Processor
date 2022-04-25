@@ -4,8 +4,8 @@
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 43420 2f72edf5dc6aefedae272175ac5b7e18be5980dd $
-  $Date: 2021-09-10 11:14:48 $
+  $Revision: 43430 d6073c4eca6942dd8f614cc9949500f0002674f7 $
+  $Date: 2021-09-16 08:06:38 $
   
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
@@ -400,7 +400,7 @@ function activateMachine() {
     for (var i = 0; i < getNumberOfSections(); ++i) {
       var section = getSection(i);
       if (section.isMultiAxis()) {
-        machineConfiguration.setToolLength(section.getTool().getBodyLength()); // define the tool length for head adjustments
+        machineConfiguration.setToolLength(getBodyLength(section.getTool())); // define the tool length for head adjustments
         section.optimizeMachineAnglesByMachine(machineConfiguration, tcpIsSupported ? 0 : 1);
       }
     }
@@ -423,6 +423,16 @@ function setFeedrateMode(reset) {
   if (!receivedMachineConfiguration || (revision < 45765)) {
     setMachineConfiguration(machineConfiguration);
   }
+}
+
+function getBodyLength(tool) {
+  for (var i = 0; i < getNumberOfSections(); ++i) {
+    var section = getSection(i);
+    if (tool.number == section.getTool().number) {
+      return section.getParameter("operation:tool_overallLength", tool.bodyLength + tool.holderLength);
+    }
+  }
+  return tool.bodyLength + tool.holderLength;
 }
 
 function defineMachine() {
