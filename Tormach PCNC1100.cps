@@ -4,8 +4,8 @@
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 43407 78292eed1dd004d50179b1c847c614e94790630b $
-  $Date: 2021-08-30 05:02:04 $
+  $Revision: 43420 2f72edf5dc6aefedae272175ac5b7e18be5980dd $
+  $Date: 2021-09-10 11:14:48 $
   
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
@@ -651,22 +651,6 @@ function forceWorkPlane() {
   currentWorkPlaneABC = undefined;
 }
 
-function setWorkPlane(abc) {
-  if (!machineConfiguration.isMultiAxisConfiguration()) {
-    return; // ignore
-  }
-
-  if (!((currentWorkPlaneABC == undefined) ||
-        abcFormat.areDifferent(abc.x, currentWorkPlaneABC.x) ||
-        abcFormat.areDifferent(abc.y, currentWorkPlaneABC.y) ||
-        abcFormat.areDifferent(abc.z, currentWorkPlaneABC.z))) {
-    return; // no change
-  }
-  positionABC(abc, true);
-  onCommand(COMMAND_LOCK_MULTI_AXIS);
-  currentWorkPlaneABC = abc;
-}
-
 function positionABC(abc, force) {
   if (typeof unwindABC == "function") {
     unwindABC(abc, false);
@@ -691,6 +675,22 @@ function positionABC(abc, force) {
     currentMachineABC = new Vector(abc);
     setCurrentABC(abc); // required for machine simulation
   }
+}
+
+function setWorkPlane(abc) {
+  if (!machineConfiguration.isMultiAxisConfiguration()) {
+    return; // ignore
+  }
+
+  if (!((currentWorkPlaneABC == undefined) ||
+        abcFormat.areDifferent(abc.x, currentWorkPlaneABC.x) ||
+        abcFormat.areDifferent(abc.y, currentWorkPlaneABC.y) ||
+        abcFormat.areDifferent(abc.z, currentWorkPlaneABC.z))) {
+    return; // no change
+  }
+  positionABC(abc, true);
+  onCommand(COMMAND_LOCK_MULTI_AXIS);
+  currentWorkPlaneABC = abc;
 }
 
 var closestABC = true; // choose closest machine angles
