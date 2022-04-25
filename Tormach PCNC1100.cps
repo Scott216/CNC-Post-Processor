@@ -4,8 +4,8 @@
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 43495 e984b553da9e215d55234eb8340d2a85620658fa $
-  $Date: 2021-11-02 10:30:11 $
+  $Revision: 43554 a19c569c9f7fe055fc222095112d3f1eebc74b63 $
+  $Date: 2021-12-02 17:56:05 $
 
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
@@ -1673,7 +1673,7 @@ function writeRetract() {
   var method = getProperty("safePositionMethod");
   if (method == "clearanceHeight") {
     if (!is3D()) {
-      error(localize("Retract option 'Clearance Height' is not supported for multi-axis machining."));
+      error(localize("Safe retract option 'Clearance Height' is only supported when all operations are along the setup Z-axis."));
     }
     return;
   }
