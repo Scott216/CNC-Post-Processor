@@ -4,8 +4,8 @@
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 43602 83ef305dbd685ac5903538365ed7de9a08636e84 $
-  $Date: 2022-01-21 00:04:52 $
+  $Revision: 43743 9d33c947b8dd13f8fa48347d2320e0ba03a972cf $
+  $Date: 2022-04-06 07:18:49 $
 
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
@@ -1528,11 +1528,11 @@ function onLinear5D(_x, _y, _z, _a, _b, _c, feed, feedMode) {
 
   if (x || y || z || a || b || c) {
     writeBlock(gFeedModeModal.format(fMode), gMotionModal.format(1), x, y, z, a, b, c, f);
-  } else if (f.frn) {
+  } else if (f) {
     if (getNextRecord().isMotion()) { // try not to output feed without motion
       feedOutput.reset(); // force feed on next line
     } else {
-      writeBlock(gFeedModeModal.format(f.fmode), gMotionModal.format(1), f);
+      writeBlock(gFeedModeModal.format(fMode), gMotionModal.format(1), f);
     }
   }
 }
