@@ -4,8 +4,8 @@
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 43289 77144070301d44e4cda7a331a4d8b350d53b2702 $
-  $Date: 2021-05-25 12:03:00 $
+  $Revision: 43338 26e276304b5d8cac2f7af931428c7bd7036416d8 $
+  $Date: 2021-06-25 14:01:30 $
   
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
@@ -401,11 +401,11 @@ function activateMachine() {
       var section = getSection(i);
       if (section.isMultiAxis()) {
         machineConfiguration.setToolLength(section.getTool().getBodyLength()); // define the tool length for head adjustments
-        section.optimizeMachineAnglesByMachine(machineConfiguration, OPTIMIZE_AXIS);
+        section.optimizeMachineAnglesByMachine(machineConfiguration, tcpIsSupported ? 0 : 1);
       }
     }
   } else {
-    optimizeMachineAngles2(OPTIMIZE_AXIS);
+    optimizeMachineAngles2(tcpIsSupported ? 0 : 1);
   }
 }
 
