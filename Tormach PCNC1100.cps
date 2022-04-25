@@ -4,8 +4,8 @@
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 43338 26e276304b5d8cac2f7af931428c7bd7036416d8 $
-  $Date: 2021-06-25 14:01:30 $
+  $Revision: 43407 78292eed1dd004d50179b1c847c614e94790630b $
+  $Date: 2021-08-30 05:02:04 $
   
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
 */
@@ -440,7 +440,7 @@ function defineMachine() {
     if (masterAxis >= 0) {
       var rotaryVector = [0, 0, 0];
       rotaryVector[masterAxis] = rotary / Math.abs(rotary);
-      var aAxis = createAxis({coordinate:0, table:true, axis:rotaryVector, cyclic:true, preference:0, tcp:false});
+      var aAxis = createAxis({coordinate:0, table:true, axis:rotaryVector, cyclic:true, preference:0, tcp:false, reset:3});
       machineConfiguration = new MachineConfiguration(aAxis);
 
       setMachineConfiguration(machineConfiguration);
@@ -662,26 +662,94 @@ function setWorkPlane(abc) {
         abcFormat.areDifferent(abc.z, currentWorkPlaneABC.z))) {
     return; // no change
   }
-
-  onCommand(COMMAND_UNLOCK_MULTI_AXIS);
-
-  // NOTE: add retract here
-
-  writeBlock(
-    gMotionModal.format(0),
-    conditional(machineConfiguration.isMachineCoordinate(0), "A" + abcFormat.format(abc.x)),
-    conditional(machineConfiguration.isMachineCoordinate(1), "B" + abcFormat.format(abc.y)),
-    conditional(machineConfiguration.isMachineCoordinate(2), "C" + abcFormat.format(abc.z))
-  );
-  setCurrentABC(abc); // required for machine simulation
-
+  positionABC(abc, true);
   onCommand(COMMAND_LOCK_MULTI_AXIS);
-
   currentWorkPlaneABC = abc;
 }
 
+function positionABC(abc, force) {
+  if (typeof unwindABC == "function") {
+    unwindABC(abc, false);
+  }
+  if (force) {
+    forceABC();
+  }
+  var a = aOutput.format(abc.x);
+  var b = bOutput.format(abc.y);
+  var c = cOutput.format(abc.z);
+  if (a || b || c) {
+    if (!retracted) {
+      if (typeof moveToSafeRetractPosition == "function") {
+        moveToSafeRetractPosition();
+      } else {
+        writeRetract(Z);
+      }
+    }
+    onCommand(COMMAND_UNLOCK_MULTI_AXIS);
+    gMotionModal.reset();
+    writeBlock(gMotionModal.format(0), a, b, c);
+    currentMachineABC = new Vector(abc);
+    setCurrentABC(abc); // required for machine simulation
+  }
+}
+
 var closestABC = true; // choose closest machine angles
-var currentMachineABC;
+var currentMachineABC = new Vector(0, 0, 0);
+
+// resets the rotary axes to 0 if reset is specified when creating the axis
+function resetABC(previousABC) {
+  var axis = new Array(machineConfiguration.getAxisU(), machineConfiguration.getAxisV(), machineConfiguration.getAxisW());
+  var abc = new Vector(previousABC);
+  for (var i in axis) {
+    if (axis[i].isEnabled() && (axis[i].getReset() & 1)) {
+      var coordinate = axis[i].getCoordinate();
+      if (abcFormat.getResultingValue(Math.abs(abc.getCoordinate(coordinate))) > 360) {
+        abc.setCoordinate(coordinate, 0);
+      }
+    }
+  }
+  return abc;
+}
+
+function getPreferenceWeight(_abc) {
+  var axis = new Array(machineConfiguration.getAxisU(), machineConfiguration.getAxisV(), machineConfiguration.getAxisW());
+  var abc = new Array(_abc.x, _abc.y, _abc.z);
+  var preference = 0;
+  for (var i = 0; i < 3; ++i) {
+    if (axis[i].isEnabled()) {
+      preference += ((abcFormat.getResultingValue(abc[axis[i].getCoordinate()]) * axis[i].getPreference()) < 0) ? -1 : 1;
+    }
+  }
+  return preference;
+}
+
+function remapToABC(currentABC, previousABC, useReset) {
+  if (useReset) {
+    previousABC = resetABC(previousABC); // support 'reset' flag in axes definitions
+  }
+
+  var both = machineConfiguration.getABCByDirectionBoth(machineConfiguration.getDirection(currentABC));
+  var abc1 = machineConfiguration.remapToABC(both[0], previousABC);
+  abc1 = machineConfiguration.remapABC(abc1);
+  var abc2 = machineConfiguration.remapToABC(both[1], previousABC);
+  abc2 = machineConfiguration.remapABC(abc2);
+
+  // choose angles based on preference
+  var preference1 = getPreferenceWeight(abc1);
+  var preference2 = getPreferenceWeight(abc2);
+  if (preference1 > preference2) {
+    return abc1;
+  } else if (preference2 > preference1) {
+    return abc2;
+  }
+
+  // choose angles based on closest solution
+  if (Vector.diff(abc1, previousABC).length < Vector.diff(abc2, previousABC).length) {
+    return abc1;
+  } else {
+    return abc2;
+  }
+}
 
 function getWorkPlaneMachineABC(workPlane) {
   var W = workPlane; // map to global frame
@@ -689,7 +757,7 @@ function getWorkPlaneMachineABC(workPlane) {
   var abc = machineConfiguration.getABC(W);
   if (closestABC) {
     if (currentMachineABC) {
-      abc = machineConfiguration.remapToABC(abc, currentMachineABC);
+      abc = remapToABC(abc, currentMachineABC, true);
     } else {
       abc = machineConfiguration.getPreferredABC(abc);
     }
@@ -699,7 +767,6 @@ function getWorkPlaneMachineABC(workPlane) {
   
   try {
     abc = machineConfiguration.remapABC(abc);
-    currentMachineABC = abc;
   } catch (e) {
     error(
       localize("Machine angles not supported") + ":"
@@ -747,6 +814,51 @@ function getWorkPlaneMachineABC(workPlane) {
     }
   }
   return abc;
+}
+
+function unwindABC(abc, force) {
+  var method = "G92"; // supported methods are "G28" and "G92"
+  if (method != "G92" && method != "G28") {
+    error(localize("Unsupported unwindABC method."));
+    return;
+  }
+  var axes = new Array(machineConfiguration.getAxisU(), machineConfiguration.getAxisV(), machineConfiguration.getAxisW());
+  for (var i in axes) {
+    if (axes[i].isEnabled()) {
+      if (axes[i].getReset() > 0 || force) {
+        var j = axes[i].getCoordinate();
+        var nearestABC = remapToABC(currentMachineABC, abc, false);
+        var distanceABC = abcFormat.getResultingValue(Math.abs(Vector.diff(currentMachineABC, abc).getCoordinate(j)));
+        var distanceOrigin = 0;
+        if (method == "G92") {
+          distanceOrigin = abcFormat.getResultingValue(Math.abs(Vector.diff(nearestABC, abc).getCoordinate(j)));
+        } else { // G28
+          distanceOrigin = abcFormat.getResultingValue(Math.abs(currentMachineABC.getCoordinate(j))) % 360; // calculate distance for unwinding axis
+          distanceOrigin = (distanceOrigin > 180) ? 360 - distanceOrigin : distanceOrigin; // take shortest route to 0
+          distanceOrigin += abcFormat.getResultingValue(Math.abs(abc.getCoordinate(j))); // add distance from 0 to new position
+        }
+        var revolutions = distanceABC / 360;
+        if (distanceABC > distanceOrigin && (revolutions > 1)) {
+          var angle = method == "G92" ? nearestABC.getCoordinate(j) : 0;
+          var words = method == "G92" ? [gFormat.format(92)] : [gFormat.format(28), gAbsIncModal.format(91)];
+          var outputs = [aOutput, bOutput, cOutput];
+          outputs[j].reset();
+          words.push(outputs[j].format(angle));
+          if (!retracted) {
+            if (typeof moveToSafeRetractPosition == "function") {
+              moveToSafeRetractPosition();
+            } else {
+              writeRetract(Z);
+            }
+          }
+          onCommand(COMMAND_UNLOCK_MULTI_AXIS);
+          writeBlock(words);
+          writeBlock((gAbsIncModal.getCurrent() == 91) ? gAbsIncModal.format(90) : "");
+          currentMachineABC.setCoordinate(j, angle);
+        }
+      }
+    }
+  }
 }
 
 function onSection() {
@@ -896,17 +1008,14 @@ function onSection() {
   forceXYZ();
 
   if (machineConfiguration.isMultiAxisConfiguration()) { // use 5-axis indexing for multi-axis mode
-    // set working plane after datum shift
-
-    var abc = new Vector(0, 0, 0);
+    var abc = currentSection.isMultiAxis() ? currentSection.getInitialToolAxisABC() : getWorkPlaneMachineABC(currentSection.workPlane);
     if (currentSection.isMultiAxis()) {
       forceWorkPlane();
       cancelTransformation();
-      abc = currentSection.getInitialToolAxisABC();
+      positionABC(abc, true);
     } else {
-      abc = getWorkPlaneMachineABC(currentSection.workPlane);
+      setWorkPlane(abc);
     }
-    setWorkPlane(abc);
   } else { // pure 3D
     var remaining = currentSection.workPlane;
     if (!isSameDirection(remaining.forward, new Vector(0, 0, 1))) {
@@ -916,7 +1025,7 @@ function onSection() {
     setRotation(remaining);
   }
 
-  forceAny();
+  forceXYZ();
   gMotionModal.reset();
 
   var initialPosition = getFramePosition(currentSection.getInitialPosition());
@@ -1368,8 +1477,10 @@ function onRapid5D(_x, _y, _z, _a, _b, _c) {
   var a = aOutput.format(_a);
   var b = bOutput.format(_b);
   var c = cOutput.format(_c);
-  writeBlock(gMotionModal.format(0), x, y, z, a, b, c);
-  feedOutput.reset();
+  if (x || y || z || a || b || c) {
+    writeBlock(gMotionModal.format(0), x, y, z, a, b, c);
+    feedOutput.reset();
+  }
 }
 
 function onLinear5D(_x, _y, _z, _a, _b, _c, feed, feedMode) {
@@ -1536,6 +1647,11 @@ function onSectionEnd() {
       mFormat.format(9)
     );
   }
+
+  // the code below gets the machine angles from previous operation.  closestABC must also be set to true
+  if (currentSection.isMultiAxis() && currentSection.isOptimizedForMachine()) {
+    currentMachineABC = currentSection.getFinalToolAxisABC();
+  }
 }
 
 /** Output block to do safe retract and/or move to home position. */
@@ -1654,6 +1770,7 @@ function onRotateAxes(_x, _y, _z, _a, _b, _c) {
   xOutput.disable();
   yOutput.disable();
   zOutput.disable();
+  unwindABC(new Vector(_a, _b, _c), false);
   invokeOnRapid5D(_x, _y, _z, _a, _b, _c);
   setCurrentABC(new Vector(_a, _b, _c));
   xOutput.enable();
@@ -1686,7 +1803,10 @@ function onClose() {
   retracted = true;
   writeRetract(X, Y);
 
-  setWorkPlane(new Vector(0, 0, 0)); // reset working plane
+  if (machineConfiguration.isMultiAxisConfiguration()) {
+    unwindABC(new Vector(0, 0, 0), true);
+    positionABC(new Vector(0, 0, 0), true);
+  }
 
   onImpliedCommand(COMMAND_END);
   onImpliedCommand(COMMAND_STOP_SPINDLE);
