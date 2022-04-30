@@ -1,23 +1,23 @@
 /**
-  Copyright (C) 2012-2021 by Autodesk, Inc.
+  Copyright (C) 2012-2022 by Autodesk, Inc.
   All rights reserved.
 
   ShopBot OpenSBP post processor configuration.
 
-  $Revision: 43151 08c79bb5b30997ccb5fb33ab8e7c8c26981be334 $
-  $Date: 2021-02-19 00:25:13 $
-  
+  $Revision: 43777 913b50004e554ec1ad3ee0391622b231c1a0fb59 $
+  $Date: 2022-04-26 12:40:16 $
+
   FORKID {866F31A2-119D-485c-B228-090CC89C9BE8}
 */
 
 description = "ShopBot OpenSBP";
 vendor = "ShopBot Tools";
 vendorUrl = "http://www.shopbottools.com";
-legal = "Copyright (C) 2012-2021 by Autodesk, Inc.";
+legal = "Copyright (C) 2012-2022 by Autodesk, Inc.";
 certificationLevel = 2;
 minimumRevision = 45702;
 
-longDescription = "Generic post for the Shopbot OpenSBP format with support for both manual and automatic tool changes. By default the post operates in 3-axis mode. For a 5-axis tool set the 'fiveAxis' property to Yes. 5-axis users must set the 'gaugeLength' property in inches before cutting which can be calculated through the tool's calibration macro. For a 4-axis tool set the 'fourAxis' property to YES. For 4-axis mode, the B-axis will turn around the X-axis by default. For the Y-axis configurations set the 'bAxisTurnsAroundX' property to NO. Users running older versions of SB3 - V3.5 or earlier should set the 'SB3v36' property to NO.";
+longDescription = "Generic post for the Shopbot OpenSBP format with support for both manual and automatic tool changes. By default the post operates in 3-axis mode. For a 5-axis tool set the 'Five Axis' property to Yes. 5-axis users must set the 'Gauge length (IN)' property in inches before cutting which can be calculated through the tool's calibration macro. For a 4-axis tool set the 'Four Axis' property to YES. For 4-axis mode, the B-axis will turn around the X-axis by default. For the Y-axis configurations set the 'B axis rotates around X' property to NO. Users running older versions of SB3 - V3.5 or earlier should set the 'SB3 V3.6 or greater' property to NO.";
 
 extension = "sbp";
 setCodePage("ascii");
@@ -38,66 +38,74 @@ var stockHeight;
 
 // user-defined properties
 properties = {
-  fiveAxis: {
-    title: "Five axis",
+  fifthAxis: {
+    title      : "Five axis",
     description: "Defines whether the machine is a 5-axis model.",
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : "configuration",
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
-  fourAxis: {
-    title: "Four axis",
+  fourthAxis: {
+    title      : "Four axis",
     description: "Defines whether the machine is a 4-axis model.",
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : "configuration",
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   bAxisTurnsAroundX: {
-    title: "B axis rotates around X",
+    title      : "B axis rotates around X",
     description: "Choose between B-axis along X or Y. This is only applicable when the machine is a 4-axis model.",
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : "configuration",
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   SB3v36: {
-    title: "SB3 V3.6 or greater",
+    title      : "SB3 V3.6 or greater",
     description: "Specifies that the version of control is SB3 V3.6 or greater",
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : "configuration",
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   gaugeLength: {
-    title: "Gauge length (IN)",
+    title      : "Gauge length (IN)",
     description: "Always set in inches. Change this for your particular machine and if recalibration is required. Use calibration macro to get value.",
-    type: "number",
-    value: 6.3,
-    scope: "post"
+    group      : "multiAxis",
+    type       : "number",
+    value      : 6.3,
+    scope      : "post"
   },
   safeRetractDistance: {
-    title: "Safe retract distance",
+    title      : "Safe retract distance",
     description: "A set distance to add to the tool length for rewind C-axis tool retract.",
-    type: "number",
-    value: 2,
-    scope: "post"
+    group      : "multiAxis",
+    type       : "number",
+    value      : 2,
+    scope      : "post"
   },
   useDPMFeeds: {
-    title: "Rotary moves feed rate output",
+    title      : "Rotary moves feed rate output",
     description: "'VS feeds' outputs DPM .",
-    type: "enum",
-    values: [
-      {title: "VS feeds", id: "true"},
-      {title: "Linear axis MS feeds", id: "false"},
-      {title: "Programmed feeds", id: "tooltip"}
+    group      : "multiAxis",
+    type       : "enum",
+    values     : [
+      {title:"VS feeds", id:"true"},
+      {title:"Linear axis MS feeds", id:"false"},
+      {title:"Programmed feeds", id:"tooltip"}
     ],
     value: "tooltip",
     scope: "post"
   },
   minimizeFeedOutput: {
-    title: "Minimize feedrate output",
+    title      : "Minimize feedrate output",
     description: "Enable to limit feed rate output to the cutting (XY) and plunge (Z) feedrates (for multi-axis moves, 'Rotary moves feed rate output' must be set to 'Programmed feeds'). Disable to output all programmed feed rates.",
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : "preferences",
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   }
 };
 
@@ -172,20 +180,20 @@ function writeComment(text) {
 }
 
 function onOpen() {
-  
-  if (getProperty("fiveAxis") && getProperty("fourAxis")) {
-    error(localize("You cannot enable both fiveAxis and fourAxis properties at the same time."));
+
+  if (getProperty("fifthAxis") && getProperty("fourthAxis")) {
+    error(localize("You cannot enable both 'Five Axis' and 'Four Axis' properties at the same time."));
     return;
   }
 
-  if (getProperty("fiveAxis")) {
+  if (getProperty("fifthAxis")) {
     var aAxis = createAxis({coordinate:0, table:false, axis:[0, 0, -1], range:[-450, 450], preference:0});
     var bAxis = createAxis({coordinate:1, table:false, axis:[0, -1, 0], range:[-120, 120], preference:0});
     machineConfiguration = new MachineConfiguration(bAxis, aAxis);
 
     setMachineConfiguration(machineConfiguration);
     optimizeMachineAngles2(0); // TCP mode - we compensate below
-  } else if (getProperty("fourAxis")) {
+  } else if (getProperty("fourthAxis")) {
     if (getProperty("bAxisTurnsAroundX")) {
       // yes - still called B even when rotating around X-axis
       var bAxis = createAxis({coordinate:1, table:true, axis:[-1, 0, 0], cyclic:true, preference:1});
@@ -206,7 +214,7 @@ function onOpen() {
   if (!machineConfiguration.isMachineCoordinate(1)) {
     bOutput.disable();
   }
-  
+
   if (programName) {
     writeComment(programName);
   }
@@ -215,11 +223,11 @@ function onOpen() {
   }
 
   writeBlock("SA"); // absolute
-  
+
   if (getProperty("SB3v36")) {
     writeln("CN, 90"); // calls up user variables in controller
   }
-  
+
   switch (unit) {
   case IN:
     writeBlock("IF %(25)=1 THEN GOTO UNIT_ERROR");
@@ -313,7 +321,7 @@ function setWorkPlane(abc) {
     conditional(machineConfiguration.isMachineCoordinate(1), abcFormat.format(abc.y))
     // conditional(machineConfiguration.isMachineCoordinate(2), abcFormat.format(abc.z))
   );
-  
+
   currentWorkPlaneABC = abc;
   return true;
 }
@@ -334,7 +342,7 @@ function getWorkPlaneMachineABC(workPlane) {
   } else {
     abc = machineConfiguration.getPreferredABC(abc);
   }
-  
+
   try {
     abc = machineConfiguration.remapABC(abc);
     currentMachineABC = abc;
@@ -346,12 +354,12 @@ function getWorkPlaneMachineABC(workPlane) {
       // + conditional(machineConfiguration.isMachineCoordinate(2), " C" + abcFormat.format(abc.z))
     );
   }
-  
+
   var direction = machineConfiguration.getDirection(abc);
   if (!isSameDirection(direction, W.forward)) {
     error(localize("Orientation not supported."));
   }
-  
+
   if (!machineConfiguration.isABCSupported(abc)) {
     error(
       localize("Work plane is not supported") + ":"
@@ -361,7 +369,7 @@ function getWorkPlaneMachineABC(workPlane) {
     );
   }
 
-  var tcp = getProperty("fiveAxis"); // 4-axis adjusts for rotations, 5-axis does not
+  var tcp = getProperty("fifthAxis"); // 4-axis adjusts for rotations, 5-axis does not
   if (tcp) {
     setRotation(W); // TCP mode
   } else {
@@ -369,7 +377,7 @@ function getWorkPlaneMachineABC(workPlane) {
     var R = machineConfiguration.getRemainingOrientation(abc, W);
     setRotation(R);
   }
-  
+
   return abc;
 }
 
@@ -379,7 +387,7 @@ function onSection() {
   var insertToolCall = isFirstSection() ||
     currentSection.getForceToolChange && currentSection.getForceToolChange() ||
     (tool.number != getPreviousSection().getTool().number);
-  
+
   writeln("");
 
   if (hasParameter("operation-comment")) {
@@ -388,7 +396,7 @@ function onSection() {
       writeComment(comment);
     }
   }
-  
+
   if (getProperty("showNotes") && hasParameter("notes")) {
     var notes = getParameter("notes");
     if (notes) {
@@ -403,7 +411,7 @@ function onSection() {
       }
     }
   }
-  
+
   var retracted = false;
   if (machineConfiguration.isMultiAxisConfiguration()) { // use 5-axis indexing for multi-axis mode
 
@@ -429,7 +437,7 @@ function onSection() {
 
   if (insertToolCall && getProperty("SB3v36")) {
     // forceWorkPlane();
-    
+
     if (tool.number > 99) {
       warning(localize("Tool number exceeds maximum value."));
     }
@@ -476,7 +484,7 @@ function onSection() {
   }
 
   headOffset = 0;
-  if (getProperty("fiveAxis")) {
+  if (getProperty("fifthAxis")) {
     headOffset = tool.bodyLength + toPreciseUnit(getProperty("gaugeLength"), IN); // control will compensate for tool length
     var displacement = currentSection.getGlobalInitialToolAxis();
     // var displacement = currentSection.workPlane.forward;
@@ -574,7 +582,7 @@ function writeFeed(feed, moveInZ, multiAxis) {
       dpmOutput2.reset();
       var f1 = dpmOutput1.format(feed[0]);
       var f2 = dpmOutput2.format(feed[1]);
-      if (getProperty("fiveAxis")) {
+      if (getProperty("fifthAxis")) {
         writeBlock(fCode, "", "", f1, f2);
       } else {
         writeBlock(fCode, "", "", "", f2);
@@ -638,7 +646,7 @@ function onLinear(_x, _y, _z, feed) {
 
 function getOptimizedHeads(_x, _y, _z, _a, _b, _c) {
   var xyz = new Vector();
-  if (getProperty("fiveAxis")) {
+  if (getProperty("fifthAxis")) {
     var displacement = machineConfiguration.getDirection(new Vector(_a, _b, _c));
     displacement.multiply(headOffset); // control will compensate for tool length
     displacement = Vector.diff(displacement, new Vector(0, 0, headOffset));
@@ -674,7 +682,7 @@ function onLinear5D(_x, _y, _z, _a, _b, _c, feed) {
     error(localize("This post configuration has not been customized for 5-axis simultaneous toolpath."));
     return;
   }
-  
+
   var xyz = getOptimizedHeads(_x, _y, _z, _a, _b, _c);
   var x = xOutput.format2(xyz.x);
   var y = yOutput.format2(xyz.y);
@@ -774,7 +782,7 @@ function isRewindAngleValid(_a, _b, _c) {
     );
     return false;
   }
-  
+
   // make sure angles are within the limits of the machine
   var abc = new Array(_a, _b, _c);
   var ix = machineConfiguration.getAxisU().getCoordinate();
@@ -797,17 +805,17 @@ function isRewindAngleValid(_a, _b, _c) {
     );
     return false;
   }
-  
+
   return true;
 }
 
 function onRewindMachine(_a, _b, _c) {
-  
+
   if (!performRewinds) {
     error(localize("REWIND: Rewind of machine is required for simultaneous multi-axis toolpath and has been disabled."));
     return;
   }
-  
+
   // Allow user to override rewind logic
   if (onRewindMachineEntry(_a, _b, _c)) {
     return;
@@ -821,7 +829,7 @@ function onRewindMachine(_a, _b, _c) {
     );
     return;
   }
-  
+
   // Work with the tool end point
   if (currentSection.getOptimizedTCPMode() == 0) {
     currentTool = getCurrentPosition();
@@ -830,7 +838,7 @@ function onRewindMachine(_a, _b, _c) {
   }
   var currentABC = getCurrentDirection();
   var currentDirection = machineConfiguration.getDirection(currentABC);
-  
+
   // Calculate the retract position
   var retractPosition = getRetractPosition(currentTool, currentDirection);
 
@@ -852,7 +860,7 @@ function onRewindMachine(_a, _b, _c) {
     position = machineConfiguration.getOrientation(getCurrentDirection()).getTransposed().multiply(retractPosition);
   }
   onLinear5D(position.x, position.y, position.z, currentABC.x, currentABC.y, currentABC.z, safeRetractFeed);
-  
+
   // Cancel so that tool doesn't follow tables
   //writeBlock(gFormat.format(49), formatComment("TCPC OFF"));
 
@@ -916,9 +924,9 @@ function getMultiaxisFeed(_x, _y, _z, _a, _b, _c, feed) {
     error(localize("Feedrate is less than or equal to 0."));
     return f;
   }
-  
+
   var length = getMoveLength(_x, _y, _z, _a, _b, _c);
-  
+
   if (useInverseTimeFeed) { // inverse time
     f.frn = getInverseTime(length.tool, feed);
     f.fmode = 93;
@@ -936,9 +944,9 @@ function getOptimizedMode() {
     return forceOptimized;
   }
   // return (currentSection.getOptimizedTCPMode() != 0); // TAG:doesn't return correct value
-  return !getProperty("fiveAxis"); // false for 5-axis and true for 4-axis
+  return !getProperty("fifthAxis"); // false for 5-axis and true for 4-axis
 }
-  
+
 /** Calculate the DPM feedrate number. */
 var dpmAsXY = false; // multi-axis feeds output as IPM feeds (true) or DPM feeds (false)
 function getFeedDPM(_moveLength, _feed) {
@@ -1079,7 +1087,7 @@ function getRotaryRadius(axis, toolPosition, abc) {
   }
   return radius;
 }
-  
+
 /** Calculate the linear distance based on the rotation of a rotary axis. */
 function getRadialDistance(radius, startABC, endABC) {
   // calculate length of radial move
@@ -1090,7 +1098,7 @@ function getRadialDistance(radius, startABC, endABC) {
   var radialLength = (2 * Math.PI * radius) * (delta / (2 * Math.PI));
   return radialLength;
 }
-  
+
 /** Calculate tooltip, XYZ, and rotary move lengths. */
 function getMoveLength(_x, _y, _z, _a, _b, _c) {
   // get starting and ending positions
@@ -1106,7 +1114,7 @@ function getMoveLength(_x, _y, _z, _a, _b, _c) {
     startABC = getCurrentDirection();
   }
   var endABC = new Vector(_a, _b, _c);
-    
+
   if (!getOptimizedMode()) { // calculate XYZ from tool tip
     startTool = getCurrentPosition();
     endTool = new Vector(_x, _y, _z);
@@ -1153,14 +1161,14 @@ function getMoveLength(_x, _y, _z, _a, _b, _c) {
 
   // calculate radii
   moveLength.radius = getRotaryRadii(startTool, endTool, startABC, endABC);
-  
+
   // calculate the radial portion of the tool tip movement
   var radialLength = Math.sqrt(
     Math.pow(getRadialDistance(moveLength.radius.x, startABC.x, endABC.x), 2.0) +
     Math.pow(getRadialDistance(moveLength.radius.y, startABC.y, endABC.y), 2.0) +
     Math.pow(getRadialDistance(moveLength.radius.z, startABC.z, endABC.z), 2.0)
   );
-  
+
   // calculate the tool tip move length
   // tool tip distance is the move distance based on a combination of linear and rotary axes movement
   moveLength.tool = moveLength.xyzLength + radialLength;
