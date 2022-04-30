@@ -8,6 +8,10 @@
   $Date: 2022-04-26 12:40:16 $
 
   FORKID {866F31A2-119D-485c-B228-090CC89C9BE8}
+
+
+  4/30/22 - SRG Added support for Manual NC passthrough.  Ref - http://autode.sk/3jdxNnK
+
 */
 
 description = "ShopBot OpenSBP";
@@ -157,6 +161,18 @@ var sOutput = createVariable({prefix:"TR, ", force:true}, rpmFormat);
 
 // collected state
 var useSimpleFeeds;
+
+
+// Manual NC PassThrough - added by SRG 4/30/22
+function onPassThrough(text) {
+  writeComment("Manual NC Passthrough");
+  var commands = String(text).split(",");
+  for (text in commands) {
+    writeBlock(commands[text]);
+  }
+}
+
+
 
 /**
   Writes the specified block.
