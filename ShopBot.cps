@@ -10,11 +10,13 @@
   FORKID {866F31A2-119D-485c-B228-090CC89C9BE8}
 
 
-  4/30/22 - SRG Added support for Manual NC passthrough.  Ref - http://autode.sk/3jdxNnK
-
+  4/30/22 - SRG Added support for Manual NC passthrough: function onPassThrough(text)  Ref - http://autode.sk/3jdxNnK
+  5/02/22 - SRG Added error if tool.number > 19 in function onSection(). Added variable postProcessorVersion and comment to print this out
+  
 */
 
 description = "ShopBot OpenSBP";
+postProcessorVersion = "43777 SRG R2"
 vendor = "ShopBot Tools";
 vendorUrl = "http://www.shopbottools.com";
 legal = "Copyright (C) 2012-2022 by Autodesk, Inc.";
@@ -196,7 +198,7 @@ function writeComment(text) {
 }
 
 function onOpen() {
-
+ 
   if (getProperty("fifthAxis") && getProperty("fourthAxis")) {
     error(localize("You cannot enable both 'Five Axis' and 'Four Axis' properties at the same time."));
     return;
@@ -236,6 +238,10 @@ function onOpen() {
   }
   if (programComment) {
     writeComment(programComment);
+  }
+
+  if (postProcessorVersion) {   // SRG added 5/2/22
+    writeComment("Post Processor Version: " + postProcessorVersion);
   }
 
   writeBlock("SA"); // absolute
@@ -400,6 +406,13 @@ function getWorkPlaneMachineABC(workPlane) {
 var headOffset = 0;
 
 function onSection() {
+
+  // ShopBot tool number should be from 1-19.  Larger tool numbers are for 2nd spindle and drills.  SRG 5/2/22
+  if (tool.number > 19) {
+    error(localize("Invalid Tool Number, must be from 1-19"));
+    return;
+  }
+
   var insertToolCall = isFirstSection() ||
     currentSection.getForceToolChange && currentSection.getForceToolChange() ||
     (tool.number != getPreviousSection().getTool().number);
