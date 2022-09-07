@@ -1,19 +1,24 @@
 /**
-  Copyright (C) 2012-2021 by Autodesk, Inc.
+  Copyright (C) 2012-2022 by Autodesk, Inc.
   All rights reserved.
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 43743 9d33c947b8dd13f8fa48347d2320e0ba03a972cf $
-  $Date: 2022-04-06 07:18:49 $
+  $Revision: 43323 4cf8c960b5665daa19c8c09856f1bfac5c844935 $
+  $Date: 2022-08-10 23:04:05 $
 
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
+
+  SRG edits:
+  09/07/22  - Shortened description to just Tormach and added CAPABILITY_TURNING to capabilities variable
+
+
 */
 
-description = "Tormach PathPilot";
+description = "Tormach";
 vendor = "Tormach";
 vendorUrl = "http://www.tormach.com";
-legal = "Copyright (C) 2012-2021 by Autodesk, Inc.";
+legal = "Copyright (C) 2012-2022 by Autodesk, Inc.";
 certificationLevel = 2;
 minimumRevision = 45793;
 
@@ -22,7 +27,8 @@ longDescription = "Tormach PathPilot post for 3-axis and 4-axis milling with Sma
 extension = "nc";
 setCodePage("ascii");
 
-capabilities = CAPABILITY_MILLING | CAPABILITY_MACHINE_SIMULATION;
+capabilities = CAPABILITY_MILLING | CAPABILITY_MACHINE_SIMULATION | CAPABILITY_TURNING;  //SRG - added CAPABILITY_TURNING;  
+
 tolerance = spatial(0.002, MM);
 
 minimumChordLength = spatial(0.25, MM);
@@ -38,7 +44,7 @@ properties = {
   writeMachine: {
     title      : "Write machine",
     description: "Output the machine settings in the header of the code.",
-    group      : 0,
+    group      : "formats",
     type       : "boolean",
     value      : true,
     scope      : "post"
@@ -46,7 +52,7 @@ properties = {
   writeTools: {
     title      : "Write tool list",
     description: "Output a tool list in the header of the code.",
-    group      : 0,
+    group      : "formats",
     type       : "boolean",
     value      : true,
     scope      : "post"
@@ -54,7 +60,7 @@ properties = {
   writeVersion: {
     title      : "Write version",
     description: "Write the version number in the header of the code.",
-    group      : 0,
+    group      : "formats",
     type       : "boolean",
     value      : false,
     scope      : "post"
@@ -62,6 +68,7 @@ properties = {
   safePositionMethod: {
     title      : "Safe Retracts",
     description: "Select your desired retract option. 'Clearance Height' retracts to the operation clearance height.",
+    group      : "homePositions",
     type       : "enum",
     values     : [
       {title:"G28", id:"G28"},
@@ -73,26 +80,31 @@ properties = {
     value: "G30",
     scope: "post"
   },
-  useM6: {
+  useM06: {
     title      : "Use M6",
     description: "Disable to avoid outputting M6.",
-    group      : 1,
+    group      : "preferences",
     type       : "boolean",
     value      : true,
     scope      : "post"
   },
   showSequenceNumbers: {
     title      : "Use sequence numbers",
-    description: "Use sequence numbers for each block of outputted code.",
-    group      : 1,
-    type       : "boolean",
-    value      : false,
-    scope      : "post"
+    description: "'Yes' outputs sequence numbers on each block, 'Only on tool change' outputs sequence numbers on tool change blocks only, and 'No' disables the output of sequence numbers.",
+    group      : "formats",
+    type       : "enum",
+    values     : [
+      {title:"Yes", id:"true"},
+      {title:"No", id:"false"},
+      {title:"Only on tool change", id:"toolChange"}
+    ],
+    value: "false",
+    scope: "post"
   },
   sequenceNumberStart: {
     title      : "Start sequence number",
     description: "The number at which to start the sequence numbers.",
-    group      : 1,
+    group      : "formats",
     type       : "integer",
     value      : 10,
     scope      : "post"
@@ -100,7 +112,7 @@ properties = {
   sequenceNumberIncrement: {
     title      : "Sequence number increment",
     description: "The amount by which the sequence number is incremented by in each block.",
-    group      : 1,
+    group      : "formats",
     type       : "integer",
     value      : 10,
     scope      : "post"
@@ -108,14 +120,15 @@ properties = {
   sequenceNumberOperation: {
     title      : "Sequence number at operation only",
     description: "Use sequence numbers at start of operation only.",
-    group      : 1,
+    group      : "formats",
     type       : "boolean",
     value      : true,
     scope      : "post"
   },
-  optionalStopTool: {
+  optionalStop: {
     title      : "Optional stop between tools",
     description: "Outputs optional stop code prior to a tool change.",
+    group      : "preferences",
     type       : "boolean",
     value      : true,
     scope      : "post"
@@ -123,6 +136,7 @@ properties = {
   optionalStopOperation: {
     title      : "Optional stop between operations",
     description: "Outputs optional stop code prior between all operations.",
+    group      : "preferences",
     type       : "boolean",
     value      : false,
     scope      : "post"
@@ -130,6 +144,7 @@ properties = {
   separateWordsWithSpace: {
     title      : "Separate words with space",
     description: "Adds spaces between words if 'yes' is selected.",
+    group      : "formats",
     type       : "boolean",
     value      : true,
     scope      : "post"
@@ -137,6 +152,7 @@ properties = {
   useRadius: {
     title      : "Radius arcs",
     description: "If yes is selected, arcs are outputted using radius values rather than IJK.",
+    group      : "preferences",
     type       : "boolean",
     value      : false,
     scope      : "post"
@@ -144,6 +160,7 @@ properties = {
   dwellInSeconds: {
     title      : "Dwell in seconds",
     description: "Specifies the unit for dwelling, set to 'Yes' for seconds and 'No' for milliseconds.",
+    group      : "preferences",
     type       : "boolean",
     value      : true,
     scope      : "post"
@@ -151,6 +168,7 @@ properties = {
   forceWorkOffset: {
     title      : "Force work offset",
     description: "Forces the work offset code at tool changes.",
+    group      : "preferences",
     type       : "boolean",
     value      : false,
     scope      : "post"
@@ -158,6 +176,7 @@ properties = {
   rotaryTableAxis: {
     title      : "Rotary table axis",
     description: "Select rotary table axis. Check the table direction on the machine and use the (Reversed) selection if the table is moving in the opposite direction.",
+    group      : "configuration",
     type       : "enum",
     values     : [
       {title:"No rotary", id:"none"},
@@ -174,6 +193,7 @@ properties = {
   smartCoolEquipped: {
     title      : "SmartCool equipped",
     description: "Specifies if the machine has the SmartCool attachment.",
+    group      : "configuration",
     type       : "boolean",
     value      : false,
     scope      : "post"
@@ -181,6 +201,7 @@ properties = {
   multiCoolEquipped: {
     title      : "Multi-Coolant equipped",
     description: "Specifies if the machine has the Multi-Coolant module.",
+    group      : "configuration",
     type       : "boolean",
     value      : false,
     scope      : "post"
@@ -188,6 +209,7 @@ properties = {
   smartCoolToolSweepPercentage: {
     title      : "SmartCool sweep percentage",
     description: "Sets the tool length percentage to sweep coolant.",
+    group      : "preferences",
     type       : "integer",
     value      : 100,
     scope      : "post"
@@ -195,20 +217,23 @@ properties = {
   multiCoolAirBlastSeconds: {
     title      : "Multi-Coolant air blast in seconds",
     description: "Sets the Multi-Coolant air blast time in seconds.",
+    group      : "preferences",
     type       : "integer",
     value      : 4,
     scope      : "post"
   },
-  disableCoolant: {
-    title      : "Disable coolant",
-    description: "Disable all coolant codes.",
+  outputCoolants: {
+    title      : "Output coolant commands",
+    description: "Specfies if coolant commands should be used or disabled.",
+    group      : "preferences",
     type       : "boolean",
-    value      : false,
+    value      : true,
     scope      : "post"
   },
   reversingHead: {
     title      : "Use self-reversing tapping head",
     description: "Expanded cycles are output with a self-reversing tapping head.",
+    group      : "preferences",
     type       : "boolean",
     value      : false,
     scope      : "post"
@@ -216,6 +241,7 @@ properties = {
   reversingHeadFeed: {
     title      : "Self-reversing head feed ratio",
     description: "The percentage of the tapping feedrate for retracting the tool.",
+    group      : "preferences",
     type       : "number",
     value      : 2,
     scope      : "post"
@@ -223,6 +249,7 @@ properties = {
   maxTool: {
     title      : "Maximum tool number",
     description: "Enter the maximum tool number allowed by the control.",
+    group      : "configuration",
     type       : "number",
     value      : 256,
     scope      : "post"
@@ -310,7 +337,7 @@ function writeBlock() {
   if (!formatWords(arguments)) {
     return;
   }
-  if (getProperty("showSequenceNumbers")) {
+  if (getProperty("showSequenceNumbers") == "true") {
     writeWords2(formatSequenceNumber(), arguments);
     sequenceNumber += getProperty("sequenceNumberIncrement");
   } else {
@@ -320,6 +347,16 @@ function writeBlock() {
 
 function formatComment(text) {
   return ("(" + filterText(String(text), permittedCommentChars) + ")");
+}
+
+/**
+  Writes the specified block - used for tool changes only.
+*/
+function writeToolBlock() {
+  var show = getProperty("showSequenceNumbers");
+  setProperty("showSequenceNumbers", (show == "true" || show == "toolChange") ? "true" : "false");
+  writeBlock(arguments);
+  setProperty("showSequenceNumbers", show);
 }
 
 /**
@@ -518,7 +555,7 @@ function onOpen() {
     maximumCircularSweep = toRad(90); // avoid potential center calculation errors for CNC
   }
   if (getProperty("sequenceNumberOperation")) {
-    setProperty("showSequenceNumbers", false);
+    setProperty("showSequenceNumbers", "false");
   }
 
   if (!getProperty("separateWordsWithSpace")) {
@@ -931,7 +968,7 @@ function onSection() {
   }
 
   // optional stop
-  if (!isFirstSection() && ((insertToolCall && getProperty("optionalStopTool")) || getProperty("optionalStopOperation"))) {
+  if (!isFirstSection() && ((insertToolCall && getProperty("optionalStop")) || getProperty("optionalStopOperation"))) {
     onCommand(COMMAND_OPTIONAL_STOP);
   }
 
@@ -949,13 +986,13 @@ function onSection() {
       return;
     }
 
-    if (getProperty("useM6")) {
-      writeBlock("T" + toolFormat.format(tool.number),
+    if (getProperty("useM06")) {
+      writeToolBlock("T" + toolFormat.format(tool.number),
         gFormat.format(43),
         hFormat.format(lengthOffset),
         mFormat.format(6));
     } else {
-      writeBlock("T" + toolFormat.format(tool.number), gFormat.format(43), hFormat.format(lengthOffset));
+      writeToolBlock("T" + toolFormat.format(tool.number), gFormat.format(43), hFormat.format(lengthOffset));
     }
 
     if (tool.comment) {
@@ -1119,7 +1156,7 @@ function setCoolant(coolant, topOfPart) {
   coolantZHeight = 9999.0;
   var coolantCode = 9;
 
-  if (getProperty("disableCoolant")) {
+  if (!getProperty("outputCoolants")) {
     return coolCodes;
   }
   // Smart coolant is not enabled
@@ -1353,6 +1390,10 @@ function onCyclePoint(x, y, z) {
       );
       break;
     case "reaming":
+      if (feedFormat.getResultingValue(cycle.feedrate) != feedFormat.getResultingValue(cycle.retractFeedrate)) {
+        expandCyclePoint(x, y, z);
+        break;
+      }
       if (P > 0) {
         writeBlock(
           gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(89),
@@ -1385,6 +1426,10 @@ function onCyclePoint(x, y, z) {
       );
       break;
     case "boring":
+      if (feedFormat.getResultingValue(cycle.feedrate) != feedFormat.getResultingValue(cycle.retractFeedrate)) {
+        expandCyclePoint(x, y, z);
+        break;
+      }
       if (P > 0) {
         writeBlock(
           gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(89),
