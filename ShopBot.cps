@@ -10,9 +10,10 @@
   FORKID {866F31A2-119D-485c-B228-090CC89C9BE8}
 
 
-  4/30/22 - SRG Added support for Manual NC passthrough: function onPassThrough(text)  Ref - http://autode.sk/3jdxNnK
-  5/02/22 - SRG Added error if tool.number > 19 in function onSection(). Added variable postProcessorVersion and comment to print this out
-  
+  04/30/22 - SRG Added support for Manual NC passthrough: function onPassThrough(text)  Ref - http://autode.sk/3jdxNnK
+  05/02/22 - SRG Added error if tool.number > 19 in function onSection(). Added variable postProcessorVersion and comment to print this out
+  09/07/22 - SRG Put code at beginning of program to check for spindle lockout switch input
+
 */
 
 description = "ShopBot OpenSBP";
@@ -243,6 +244,11 @@ function onOpen() {
   if (postProcessorVersion) {   // SRG added 5/2/22
     writeComment("Post Processor Version: " + postProcessorVersion);
   }
+
+  // Check spindle lockout switch - SRG added 9/7/22
+  writeln("ON INPUT(5,0) MSGBOX(Spindle lockout switch is off., OkOnly, Spindle Lockout Warning)"); 
+  writeln("ON INPUT(5,0) MSGBOX(Spindle lockout switch is still off!!, OkOnly, Spindle Lockout Warning)"); 
+
 
   writeBlock("SA"); // absolute
 
