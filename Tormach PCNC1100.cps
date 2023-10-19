@@ -1,34 +1,33 @@
 /**
-  Copyright (C) 2012-2022 by Autodesk, Inc.
+  Copyright (C) 2012-2023 by Autodesk, Inc.
   All rights reserved.
 
   Tormach PathPilot post processor configuration.
 
-  $Revision: 43323 4cf8c960b5665daa19c8c09856f1bfac5c844935 $
-  $Date: 2022-08-10 23:04:05 $
+  $Revision: 44086 1eee91cc8e9e89086eef3dcef52109ac058341f4 $
+  $Date: 2023-08-28 04:45:15 $
 
   FORKID {3CFDE807-BE2F-4A4C-B12A-03080F4B1285}
+  
+SRG edits:
+10/19/23  - Shortened longdescription.  Added CAPABILITY_TURNING to capabilities variable.  This enables Mill-Turning
 
-  SRG edits:
-  09/07/22  - Shortened description to just Tormach and added CAPABILITY_TURNING to capabilities variable
-
-
+  
 */
 
-description = "Tormach";
+description = "Tormach PathPilot";
 vendor = "Tormach";
 vendorUrl = "http://www.tormach.com";
-legal = "Copyright (C) 2012-2022 by Autodesk, Inc.";
+legal = "Copyright (C) 2012-2023 by Autodesk, Inc.";
 certificationLevel = 2;
-minimumRevision = 45793;
+minimumRevision = 45899;
 
-longDescription = "Tormach PathPilot post for 3-axis and 4-axis milling with SmartCool support.";
+longDescription = "Tormach PathPilot";
 
 extension = "nc";
 setCodePage("ascii");
 
-capabilities = CAPABILITY_MILLING | CAPABILITY_MACHINE_SIMULATION | CAPABILITY_TURNING;  //SRG - added CAPABILITY_TURNING;  
-
+capabilities = CAPABILITY_MILLING | CAPABILITY_MACHINE_SIMULATION | CAPABILITY_TURNING;
 tolerance = spatial(0.002, MM);
 
 minimumChordLength = spatial(0.25, MM);
@@ -193,7 +192,7 @@ properties = {
   smartCoolEquipped: {
     title      : "SmartCool equipped",
     description: "Specifies if the machine has the SmartCool attachment.",
-    group      : "configuration",
+    group      : "coolant",
     type       : "boolean",
     value      : false,
     scope      : "post"
@@ -201,7 +200,7 @@ properties = {
   multiCoolEquipped: {
     title      : "Multi-Coolant equipped",
     description: "Specifies if the machine has the Multi-Coolant module.",
-    group      : "configuration",
+    group      : "coolant",
     type       : "boolean",
     value      : false,
     scope      : "post"
@@ -209,7 +208,7 @@ properties = {
   smartCoolToolSweepPercentage: {
     title      : "SmartCool sweep percentage",
     description: "Sets the tool length percentage to sweep coolant.",
-    group      : "preferences",
+    group      : "coolant",
     type       : "integer",
     value      : 100,
     scope      : "post"
@@ -217,7 +216,7 @@ properties = {
   multiCoolAirBlastSeconds: {
     title      : "Multi-Coolant air blast in seconds",
     description: "Sets the Multi-Coolant air blast time in seconds.",
-    group      : "preferences",
+    group      : "coolant",
     type       : "integer",
     value      : 4,
     scope      : "post"
@@ -225,25 +224,39 @@ properties = {
   outputCoolants: {
     title      : "Output coolant commands",
     description: "Specfies if coolant commands should be used or disabled.",
-    group      : "preferences",
+    group      : "coolant",
     type       : "boolean",
     value      : true,
     scope      : "post"
   },
-  reversingHead: {
-    title      : "Use self-reversing tapping head",
-    description: "Expanded cycles are output with a self-reversing tapping head.",
-    group      : "preferences",
-    type       : "boolean",
-    value      : false,
-    scope      : "post"
+  useRigidTapping: {
+    title      : "Tapping style",
+    description: "Choose standard (G84), Rigid (G33.1), or Self-reversing tapping head, which will expand tapping cycles.",
+    group      : "tapping",
+    type       : "enum",
+    values     : [
+      {title:"Rigid (G33.1)", id:"yes"},
+      {title:"Standard (G84)", id:"no"},
+      {title:"Self-reversing head", id:"reversing"}
+    ],
+    value: "no",
+    scope: "post"
   },
   reversingHeadFeed: {
     title      : "Self-reversing head feed ratio",
-    description: "The percentage of the tapping feedrate for retracting the tool.",
-    group      : "preferences",
+    description: "The percentage of the tapping feedrate for retracting the tool when the Tapping style is set to 'Self-reversing head'.",
+    group      : "tapping",
     type       : "number",
     value      : 2,
+    scope      : "post"
+  },
+  tappingSpeed: {
+    title      : "Tapping retract speed ratio",
+    description: "The percentage of the spindle speed used when retracting the tool during a tapping cycle.",
+    group      : "tapping",
+    type       : "number",
+    value      : 1,
+    range      : [0.01, 2.0],
     scope      : "post"
   },
   maxTool: {
@@ -251,9 +264,48 @@ properties = {
     description: "Enter the maximum tool number allowed by the control.",
     group      : "configuration",
     type       : "number",
-    value      : 256,
+    value      : 1000,
     scope      : "post"
-  }
+  },
+  toolBreakageTolerance: {
+    title      : "Tool breakage tolerance",
+    description: "Specifies the tolerance for which tool break detection will raise an alarm.",
+    group      : "preferences",
+    type       : "spatial",
+    value      : 0.1,
+    scope      : "post"
+  },
+  measureTools: {
+    title      : "Optionally measure tools at start",
+    description: "Measure each tool used at the beginning of the program when the control parameter specified in 'Parameter number to enable tool measurement' is set to 0.",
+    group      : "preferences",
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
+  },
+  measureToolsParameter: {
+    title      : "Parameter number to enable tool measurement",
+    description: "Enter the parameter number used to enable tool measurements when the program is run.\nThis parameter must be set to 0 to enable the tool measurement operation on the machine.\nThe 'Optionally measure tools at start' property must be enabled.",
+    group      : "preferences",
+    type       : "number",
+    value      : 1,
+    scope      : "post"
+  },
+  allowAllProbeTools: {
+    title      : "Allow all tool numbers for probes",
+    description: "FOR TESTING PURPOSES ONLY. DO NOT ENABLE.",
+    group      : "preferences",
+    type       : "boolean",
+    value      : false,
+    scope      : "post",
+    visible    : false
+  },
+};
+
+// define the custom property groups
+groupDefinitions = {
+  coolant: {title:"Coolant", order:51, collapsed:true, description:"Smart/Multi-Coolant options."},
+  tapping: {title:"Tapping", order:52, collapsed:true, description:"Tapping options."}
 };
 
 // wcs definiton
@@ -266,7 +318,7 @@ wcsDefinitions = {
   ]
 };
 
-var permittedCommentChars = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,=_-*";
+var permittedCommentChars = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,=_-*'#()";
 
 var nFormat = createFormat({prefix:"N", decimals:0});
 var gFormat = createFormat({prefix:"G", decimals:1});
@@ -276,8 +328,9 @@ var dFormat = createFormat({prefix:"D", decimals:0});
 var xyzFormat = createFormat({decimals:(unit == MM ? 3 : 4), forceDecimal:true});
 var rFormat = xyzFormat; // radius
 var abcFormat = createFormat({decimals:3, forceDecimal:true, scale:DEG});
-var feedFormat = createFormat({decimals:(unit == MM ? 0 : 1), forceDecimal:true});
+var feedFormat = createFormat({decimals:(unit == MM ? 2 : 3), forceDecimal:true});
 var inverseTimeFormat = createFormat({decimals:4, forceDecimal:true});
+var pitchFormat = createFormat({decimals:(unit === MM ? 3 : 4), forceDecimal:true}); // thread pitch
 var toolFormat = createFormat({decimals:0});
 var rpmFormat = createFormat({decimals:0});
 var coolantOptionFormat = createFormat({decimals:0});
@@ -294,6 +347,7 @@ var bOutput = createVariable({prefix:"B"}, abcFormat);
 var cOutput = createVariable({prefix:"C"}, abcFormat);
 var feedOutput = createVariable({prefix:"F"}, feedFormat);
 var inverseTimeOutput = createVariable({prefix:"F", force:true}, inverseTimeFormat);
+var pitchOutput = createVariable({prefix:"K", force:true}, pitchFormat);
 var sOutput = createVariable({prefix:"S", force:true}, rpmFormat);
 var dOutput = createVariable({}, dFormat);
 
@@ -310,7 +364,8 @@ var gUnitModal = createModal({}, gFormat); // modal group 6 // G20-21
 var gCycleModal = createModal({force:false}, gFormat); // modal group 9 // G81, ...
 var gRetractModal = createModal({force:true}, gFormat); // modal group 10 // G98-99
 
-var WARNING_WORK_OFFSET = 0;
+// fixed settings
+var maxTappingRetractSpeed = 2000;
 
 // collected state
 var sequenceNumber;
@@ -320,6 +375,9 @@ var coolantZHeight;
 var masterAxis;
 var movementType;
 var retracted = false; // specifies that the tool has been retracted to the safe plane
+var toolChecked = false; // specifies that the tool has been checked with the probe
+var forceSpindleSpeed = false;
+var measureTool = false;
 
 function formatSequenceNumber() {
   if (sequenceNumber > 99999) {
@@ -368,6 +426,23 @@ function writeComment(text) {
 
 function writeCommentSeqno(text) {
   writeln(formatSequenceNumber() + formatComment(text));
+}
+
+function prepareForToolCheck() {
+  writeBlock(
+    mFormat.format(5),
+    mFormat.format(9)
+  );
+}
+
+function writeToolMeasureBlock(tool, preMeasure) {
+  var comment = measureTool ? formatComment("MEASURE TOOL") : "";
+  if (!preMeasure) {
+    prepareForToolCheck();
+  }
+  writeBlock("T" + toolFormat.format(tool.number), mFormat.format(6), comment);
+  writeBlock(gFormat.format(37));
+  measureTool = false;
 }
 
 /**
@@ -538,6 +613,9 @@ function defineMachine() {
     // machineConfiguration.setHomePositionX(toPreciseUnit(0, IN));
     // machineConfiguration.setHomePositionY(toPreciseUnit(0, IN));
     // machineConfiguration.setRetractPlane(toPreciseUnit(0, IN));
+
+    /* maximum spindle speed */
+    machineConfiguration.setMaximumSpindleSpeed(10000);
   }
 }
 // End of machine configuration logic
@@ -662,6 +740,43 @@ function onOpen() {
     }
   }
 
+  // measure tools
+  if (getProperty("measureTools")) {
+    var tools = getToolTable();
+    if (tools.getNumberOfTools() > 0) {
+      writeln("");
+      writeBlock(mFormat.format(0), formatComment(localize("Read note"))); // wait for operator
+      writeComment(localize("With parameter #" + getProperty("measureToolsParameter") + " set to 0 each tool will cycle through the spindle"));
+      writeComment(localize("  to verify that the correct tool is in the tool magazine and to automatically measure it."));
+      writeComment(localize("Once the tools are verified set parameter #" + getProperty("measureToolsParameter") + " to 1 with"));
+      writeComment(localize("  an MDI command of '#" + getProperty("measureToolsParameter") + " = 1' to skip verification."));
+      writeComment(localize("The value of parameter #" + getProperty("measureToolsParameter") + " can be checked with a '(DEBUG, #" + getProperty("measureToolsParameter") + ")' command."));
+      writeComment(localize("The value will be shown on the Status page."));
+      writeln("o100 sub");
+      writeln("o110 if [#" + getProperty("measureToolsParameter") + " LT 1]");
+      for (var i = 0; i < tools.getNumberOfTools(); ++i) {
+        var tool = tools.getTool(i);
+        var comment = "T" + toolFormat.format(tool.number) + "  " +
+          "D=" + xyzFormat.format(tool.diameter) + " " +
+          localize("CR") + "=" + xyzFormat.format(tool.cornerRadius);
+        if ((tool.taperAngle > 0) && (tool.taperAngle < Math.PI)) {
+          comment += " " + localize("TAPER") + "=" + taperFormat.format(tool.taperAngle) + localize("deg");
+        }
+        if (zRanges[tool.number]) {
+          comment += " - " + localize("ZMIN") + "=" + xyzFormat.format(zRanges[tool.number].getMinimum());
+        }
+        comment += " - " + getToolTypeName(tool.type);
+        writeComment(comment);
+        writeToolMeasureBlock(tool, true);
+      }
+      writeln("o110 endif");
+      writeln("o100 endsub");
+      writeln("");
+      writeln("o100 call");
+      writeln("");
+    }
+  }
+
   if ((getNumberOfSections() > 0) && (getSection(0).workOffset == 0)) {
     for (var i = 0; i < getNumberOfSections(); ++i) {
       if (getSection(i).workOffset > 0) {
@@ -725,6 +840,33 @@ function forceWorkPlane() {
   currentWorkPlaneABC = undefined;
 }
 
+function defineWorkPlane(_section) {
+  if (machineConfiguration.isMultiAxisConfiguration()) { // use 5-axis indexing for multi-axis mode
+    var abc = _section.isMultiAxis() ? _section.getInitialToolAxisABC() : getWorkPlaneMachineABC(_section.workPlane);
+    if (_section.isMultiAxis()) {
+      forceWorkPlane();
+      cancelTransformation();
+      positionABC(abc, true);
+    } else {
+      setWorkPlane(abc);
+    }
+  } else { // pure 3D
+    var remaining = _section.workPlane;
+    if (!isSameDirection(remaining.forward, new Vector(0, 0, 1))) {
+      error(localize("Tool orientation is not supported."));
+      return;
+    }
+    setRotation(remaining);
+  }
+
+  if (_section && (currentSection.getId() == _section.getId())) {
+    operationSupportsTCP = _section.getOptimizedTCPMode() == OPTIMIZE_NONE;
+    if (!_section.isMultiAxis() && (useMultiAxisFeatures || isSameDirection(machineConfiguration.getSpindleAxis(), _section.workPlane.forward))) {
+      operationSupportsTCP = false;
+    }
+  }
+}
+
 function positionABC(abc, force) {
   if (typeof unwindABC == "function") {
     unwindABC(abc, false);
@@ -746,7 +888,6 @@ function positionABC(abc, force) {
     onCommand(COMMAND_UNLOCK_MULTI_AXIS);
     gMotionModal.reset();
     writeBlock(gMotionModal.format(0), a, b, c);
-    currentMachineABC = new Vector(abc);
     setCurrentABC(abc); // required for machine simulation
   }
 }
@@ -767,169 +908,113 @@ function setWorkPlane(abc) {
   currentWorkPlaneABC = abc;
 }
 
-var closestABC = true; // choose closest machine angles
-var currentMachineABC = new Vector(0, 0, 0);
-
-// resets the rotary axes to 0 if reset is specified when creating the axis
-function resetABC(previousABC) {
-  var axis = new Array(machineConfiguration.getAxisU(), machineConfiguration.getAxisV(), machineConfiguration.getAxisW());
-  var abc = new Vector(previousABC);
-  for (var i in axis) {
-    if (axis[i].isEnabled() && (axis[i].getReset() & 1)) {
-      var coordinate = axis[i].getCoordinate();
-      if (abcFormat.getResultingValue(Math.abs(abc.getCoordinate(coordinate))) > 360) {
-        abc.setCoordinate(coordinate, 0);
-      }
-    }
-  }
-  return abc;
-}
-
-function getPreferenceWeight(_abc) {
-  var axis = new Array(machineConfiguration.getAxisU(), machineConfiguration.getAxisV(), machineConfiguration.getAxisW());
-  var abc = new Array(_abc.x, _abc.y, _abc.z);
-  var preference = 0;
-  for (var i = 0; i < 3; ++i) {
-    if (axis[i].isEnabled()) {
-      preference += ((abcFormat.getResultingValue(abc[axis[i].getCoordinate()]) * axis[i].getPreference()) < 0) ? -1 : 1;
-    }
-  }
-  return preference;
-}
-
-function remapToABC(currentABC, previousABC, useReset) {
-  if (useReset) {
-    previousABC = resetABC(previousABC); // support 'reset' flag in axes definitions
-  }
-
-  var both = machineConfiguration.getABCByDirectionBoth(machineConfiguration.getDirection(currentABC));
-  var abc1 = machineConfiguration.remapToABC(both[0], previousABC);
-  abc1 = machineConfiguration.remapABC(abc1);
-  var abc2 = machineConfiguration.remapToABC(both[1], previousABC);
-  abc2 = machineConfiguration.remapABC(abc2);
-
-  // choose angles based on preference
-  var preference1 = getPreferenceWeight(abc1);
-  var preference2 = getPreferenceWeight(abc2);
-  if (preference1 > preference2) {
-    return abc1;
-  } else if (preference2 > preference1) {
-    return abc2;
-  }
-
-  // choose angles based on closest solution
-  if (Vector.diff(abc1, previousABC).length < Vector.diff(abc2, previousABC).length) {
-    return abc1;
-  } else {
-    return abc2;
-  }
-}
-
 function getWorkPlaneMachineABC(workPlane) {
   var W = workPlane; // map to global frame
 
-  var abc = machineConfiguration.getABC(W);
-  if (closestABC) {
-    if (currentMachineABC) {
-      abc = remapToABC(abc, currentMachineABC, true);
-    } else {
-      abc = machineConfiguration.getPreferredABC(abc);
-    }
-  } else {
-    abc = machineConfiguration.getPreferredABC(abc);
-  }
-
-  try {
-    abc = machineConfiguration.remapABC(abc);
-  } catch (e) {
-    error(
-      localize("Machine angles not supported") + ":"
-      + conditional(machineConfiguration.isMachineCoordinate(0), " A" + abcFormat.format(abc.x))
-      + conditional(machineConfiguration.isMachineCoordinate(1), " B" + abcFormat.format(abc.y))
-      + conditional(machineConfiguration.isMachineCoordinate(2), " C" + abcFormat.format(abc.z))
-    );
-  }
+  var currentABC = isFirstSection() ? new Vector(0, 0, 0) : getCurrentDirection();
+  var abc = machineConfiguration.getABCByPreference(W, currentABC, ABC, PREFER_PREFERENCE, ENABLE_ALL);
 
   var direction = machineConfiguration.getDirection(abc);
   if (!isSameDirection(direction, W.forward)) {
     error(localize("Orientation not supported."));
-  }
-
-  if (!machineConfiguration.isABCSupported(abc)) {
-    error(
-      localize("Work plane is not supported") + ":"
-      + conditional(machineConfiguration.isMachineCoordinate(0), " A" + abcFormat.format(abc.x))
-      + conditional(machineConfiguration.isMachineCoordinate(1), " B" + abcFormat.format(abc.y))
-      + conditional(machineConfiguration.isMachineCoordinate(2), " C" + abcFormat.format(abc.z))
-    );
+    return new Vector();
   }
 
   var tcp = false;
-  cancelTransformation();
   if (tcp) {
     setRotation(W); // TCP mode
   } else {
     var O = machineConfiguration.getOrientation(abc);
     var R = machineConfiguration.getRemainingOrientation(abc, W);
-    var rotate = true;
-    var axis = machineConfiguration.getAxisU();
-    if (axis.isEnabled() && axis.isTable()) {
-      var ix = axis.getCoordinate();
-      var rotAxis = axis.getAxis();
-      if (isSameDirection(machineConfiguration.getDirection(abc), rotAxis) ||
-          isSameDirection(machineConfiguration.getDirection(abc), Vector.product(rotAxis, -1))) {
-        var direction = isSameDirection(machineConfiguration.getDirection(abc), rotAxis) ? 1 : -1;
-        abc.setCoordinate(ix, Math.atan2(R.right.y, R.right.x) * direction);
-        rotate = false;
-      }
-    }
-    if (rotate) {
-      setRotation(R);
-    }
+    setRotation(R);
   }
+
   return abc;
 }
 
-function unwindABC(abc, force) {
-  var method = "G92"; // supported methods are "G28" and "G92"
-  if (method != "G92" && method != "G28") {
+var UNWIND_CLOSEST = 1; // rotate axes to closest 0 (eg G28)
+var UNWIND_CURRENT = 2; // set rotary axes origin to current position (eg G92)
+// var unwindSettings = {method:UNWIND_CLOSEST, codes:[gFormat.format(28), gAbsIncModal.format(91)], workOffset:undefined, outputAngles:true, resetG90:true}; // Haas
+var unwindSettings = {method:UNWIND_CURRENT, codes:[gFormat.format(92)], workOffset:undefined, outputAngles:true, resetG90:false}; // Fanuc
+
+var UNWIND_ZERO = 1; // rotate axes to closest 0 (eg G28)
+var UNWIND_STAY = 2; // set rotary axes origin to current position (eg G92)
+var unwindSettings = {
+  method        : UNWIND_STAY, // UNWIND_ZERO (move to closest 0 (G28)) or UNWIND_STAY (table does not move (G92))
+  codes         : [gFormat.format(92)], // formatted code(s) that will (virtually) unwind axis (G90 G28), (G92), etc.
+  workOffsetCode: "", // prefix for workoffset number if it is required to be output
+  useAngle      : "true", // 'true' outputs angle with standard output variable, 'prefix' uses 'anglePrefix', 'false' does not output angle
+  anglePrefix   : [], // optional prefixes for output angles specified as ["", "", "C"], use blank string if axis does not unwind
+  resetG90      : false // set to 'true' if G90 needs to be output after the unwind block
+};
+
+function unwindABC(abc) {
+  if (typeof unwindSettings == "undefined") {
+    return;
+  }
+  if (unwindSettings.method != UNWIND_ZERO && unwindSettings.method != UNWIND_STAY) {
     error(localize("Unsupported unwindABC method."));
     return;
   }
+
   var axes = new Array(machineConfiguration.getAxisU(), machineConfiguration.getAxisV(), machineConfiguration.getAxisW());
+  var currentDirection = getCurrentDirection();
   for (var i in axes) {
-    if (axes[i].isEnabled()) {
-      if (axes[i].getReset() > 0 || force) {
-        var j = axes[i].getCoordinate();
-        var nearestABC = remapToABC(currentMachineABC, abc, false);
-        var distanceABC = abcFormat.getResultingValue(Math.abs(Vector.diff(currentMachineABC, abc).getCoordinate(j)));
-        var distanceOrigin = 0;
-        if (method == "G92") {
-          distanceOrigin = abcFormat.getResultingValue(Math.abs(Vector.diff(nearestABC, abc).getCoordinate(j)));
-        } else { // G28
-          distanceOrigin = abcFormat.getResultingValue(Math.abs(currentMachineABC.getCoordinate(j))) % 360; // calculate distance for unwinding axis
-          distanceOrigin = (distanceOrigin > 180) ? 360 - distanceOrigin : distanceOrigin; // take shortest route to 0
-          distanceOrigin += abcFormat.getResultingValue(Math.abs(abc.getCoordinate(j))); // add distance from 0 to new position
-        }
-        var revolutions = distanceABC / 360;
-        if (distanceABC > distanceOrigin && (revolutions > 1)) {
-          var angle = method == "G92" ? nearestABC.getCoordinate(j) : 0;
-          var words = method == "G92" ? [gFormat.format(92)] : [gFormat.format(28), gAbsIncModal.format(91)];
-          var outputs = [aOutput, bOutput, cOutput];
-          outputs[j].reset();
-          words.push(outputs[j].format(angle));
-          if (!retracted) {
-            if (typeof moveToSafeRetractPosition == "function") {
-              moveToSafeRetractPosition();
-            } else {
-              writeRetract(Z);
-            }
+    if (axes[i].isEnabled() && (unwindSettings.useAngle != "prefix" || unwindSettings.anglePrefix[axes[i].getCoordinate] != "")) {
+      var j = axes[i].getCoordinate();
+
+      // only use the active axis in calculations
+      var tempABC = new Vector(0, 0, 0);
+      tempABC.setCoordinate(j, abc.getCoordinate(j));
+      var tempCurrent = new Vector(0, 0, 0); // only use the active axis in calculations
+      tempCurrent.setCoordinate(j, currentDirection.getCoordinate(j));
+      var orientation = machineConfiguration.getOrientation(tempCurrent);
+
+      // get closest angle without respecting 'reset' flag
+      // and distance from previous angle to closest abc
+      var nearestABC = machineConfiguration.getABCByPreference(orientation, tempABC, ABC, PREFER_PREFERENCE, ENABLE_WCS);
+      var distanceABC = abcFormat.getResultingValue(Math.abs(Vector.diff(getCurrentDirection(), abc).getCoordinate(j)));
+
+      // calculate distance from calculated abc to closest abc
+      // include move to origin for G28 moves
+      var distanceOrigin = 0;
+      if (unwindSettings.method == UNWIND_STAY) {
+        distanceOrigin = abcFormat.getResultingValue(Math.abs(Vector.diff(nearestABC, abc).getCoordinate(j)));
+      } else { // closest angle
+        distanceOrigin = abcFormat.getResultingValue(Math.abs(getCurrentDirection().getCoordinate(j))) % 360; // calculate distance for unwinding axis
+        distanceOrigin = (distanceOrigin > 180) ? 360 - distanceOrigin : distanceOrigin; // take shortest route to 0
+        distanceOrigin += abcFormat.getResultingValue(Math.abs(abc.getCoordinate(j))); // add distance from 0 to new position
+      }
+
+      // determine if the axis needs to be rewound and rewind it if required
+      var revolutions = distanceABC / 360;
+      var angle = unwindSettings.method == UNWIND_STAY ? nearestABC.getCoordinate(j) : 0;
+      if (distanceABC > distanceOrigin && (unwindSettings.method == UNWIND_STAY || (revolutions > 1))) { // G28 method will move rotary, so make sure move is greater than 360 degrees
+        if (!retracted) {
+          if (typeof moveToSafeRetractPosition == "function") {
+            moveToSafeRetractPosition();
+          } else {
+            writeRetract(Z);
           }
-          onCommand(COMMAND_UNLOCK_MULTI_AXIS);
-          writeBlock(words);
-          writeBlock((gAbsIncModal.getCurrent() == 91) ? gAbsIncModal.format(90) : "");
-          currentMachineABC.setCoordinate(j, angle);
         }
+        onCommand(COMMAND_UNLOCK_MULTI_AXIS);
+        var outputs = [aOutput, bOutput, cOutput];
+        outputs[j].reset();
+        writeBlock(
+          unwindSettings.codes,
+          unwindSettings.workOffsetCode ? unwindSettings.workOffsetCode + currentWorkOffset : "",
+          unwindSettings.useAngle == "true" ? outputs[j].format(angle) :
+            (unwindSettings.useAngle == "prefix" ? unwindSettings.anglePrefix[j] + abcFormat.format(angle) : "")
+        );
+        if (unwindSettings.resetG90) {
+          gAbsIncModal.reset();
+          writeBlock(gAbsIncModal.format(90));
+        }
+        outputs[j].reset();
+
+        // set the current rotary axis angle from the unwind block
+        currentDirection.setCoordinate(j, angle);
+        setCurrentDirection(currentDirection);
       }
     }
   }
@@ -950,10 +1035,14 @@ function onSection() {
     (!machineConfiguration.isMultiAxisConfiguration() && currentSection.isMultiAxis()) ||
     (!getPreviousSection().isMultiAxis() && currentSection.isMultiAxis() ||
       getPreviousSection().isMultiAxis() && !currentSection.isMultiAxis()); // force newWorkPlane between indexing and simultaneous operations
-  if (insertToolCall || newWorkOffset || newWorkPlane) {
+  if (insertToolCall || newWorkOffset || newWorkPlane || toolChecked) {
     writeRetract(Z);
     forceWorkPlane();
   }
+
+  // Process Manual NC commands
+  executeManualNC();
+
   writeln("");
 
   if (hasParameter("operation-comment")) {
@@ -979,6 +1068,16 @@ function onSection() {
     if (tool.number > getProperty("maxTool")) {
       warning(localize("Tool number exceeds maximum value."));
     }
+    if (isProbeOperation()) {
+      if (tool.number != 99 && !getProperty("allowAllProbeTools")) {
+        error(subst(localize("The tool number for a probe must be 99 but is defined as %1."), tool.number));
+        return;
+      }
+      if (tool.lengthOffset != 99 && !getProperty("allowAllProbeTools")) {
+        error(subst(localize("The tool length offset for a probe must be 99 but is defined as %1."), tool.lengthOffset));
+        return;
+      }
+    }
 
     var lengthOffset = tool.lengthOffset;
     if (lengthOffset > getProperty("maxTool")) {
@@ -997,6 +1096,9 @@ function onSection() {
 
     if (tool.comment) {
       writeComment(tool.comment);
+    }
+    if (measureTool) {
+      writeToolMeasureBlock(tool, false);
     }
     var showToolZMin = false;
     if (showToolZMin) {
@@ -1023,16 +1125,21 @@ function onSection() {
   }
   var c = setCoolant(tool.coolant, topOfPart);
 
-  if (true ||
-      insertToolCall ||
-      isFirstSection() ||
-      (rpmFormat.areDifferent(spindleSpeed, sOutput.getCurrent())) ||
-      (tool.clockwise != getPreviousSection().getTool().clockwise)) {
+  if (toolChecked) {
+    forceSpindleSpeed = true; // spindle must be restarted if tool is checked without a tool change
+    toolChecked = false; // state of tool is not known at the beginning of a section since it could be broken for the previous section
+  }
+  var spindleChanged = tool.type != TOOL_PROBE &&
+    (true || insertToolCall || forceSpindleSpeed || isFirstSection() ||
+    (rpmFormat.areDifferent(spindleSpeed, sOutput.getCurrent())) ||
+    (tool.clockwise != getPreviousSection().getTool().clockwise));
+  if (spindleChanged) {
+    forceSpindleSpeed = false;
     if (spindleSpeed < 0) {
       error(localize("Spindle speed out of range."));
       return;
     }
-    if (spindleSpeed > 99999) {
+    if (spindleSpeed > machineConfiguration.getMaximumSpindleSpeed()) {
       warning(localize("Spindle speed exceeds maximum value."));
     }
     if (spindleSpeed == 0) {
@@ -1060,27 +1167,7 @@ function onSection() {
 
   forceXYZ();
 
-  if (machineConfiguration.isMultiAxisConfiguration()) { // use 5-axis indexing for multi-axis mode
-    var abc = currentSection.isMultiAxis() ? currentSection.getInitialToolAxisABC() : getWorkPlaneMachineABC(currentSection.workPlane);
-    if (currentSection.isMultiAxis()) {
-      forceWorkPlane();
-      cancelTransformation();
-      positionABC(abc, true);
-    } else {
-      setWorkPlane(abc);
-    }
-  } else { // pure 3D
-    var remaining = currentSection.workPlane;
-    if (!isSameDirection(remaining.forward, new Vector(0, 0, 1))) {
-      error(localize("Tool orientation is not supported."));
-      return;
-    }
-    setRotation(remaining);
-  }
-
-  if (currentSection) {
-    operationSupportsTCP = (currentSection.isMultiAxis() || !useMultiAxisFeatures) && currentSection.getOptimizedTCPMode() == OPTIMIZE_NONE;
-  }
+  var abc = defineWorkPlane(currentSection, true);
 
   forceXYZ();
   gMotionModal.reset();
@@ -1254,13 +1341,60 @@ function expandTappingPoint(x, y, z) {
   onExpandedLinear(x, y, cycle.clearance, cycle.feedrate * getProperty("reversingHeadFeed"));
 }
 
+/** Convert approach to sign. */
+function approach(value) {
+  validate((value == "positive") || (value == "negative"), "Invalid approach.");
+  return (value == "positive") ? 1 : -1;
+}
+
+var PROBE_RAPID = 0;
+var PROBE_FEED = 1;
+function protectedProbeMove(x, y, z, feedType) {
+  writeBlock(gMotionModal.format(1), xOutput.format(x), yOutput.format(y), zOutput.format(z),
+    feedType == PROBE_RAPID ? "F#<_rapid_ruff>" : "F#<_feed_ruff>");
+}
+
 function onCyclePoint(x, y, z) {
+  if (isInspectionOperation()) {
+    if (typeof inspectionCycleInspect == "function") {
+      inspectionCycleInspect(cycle, x, y, z);
+      return;
+    } else {
+      cycleNotSupported();
+    }
+  } else if (isProbeOperation()) {
+    writeProbeCycle(cycle, x, y, z);
+  } else {
+    writeDrillCycle(cycle, x, y, z);
+  }
+}
+
+function writeDrillCycle(cycle, x, y, z) {
   if (!isSameDirection(getRotation().forward, new Vector(0, 0, 1))) {
     expandCyclePoint(x, y, z);
     return;
   }
 
-  if (isFirstCyclePoint()) {
+  var forceCycle = false;
+  if ((isTappingCycle() && getProperty("useRigidTapping") == "yes") || cycleType == "tapping-with-chip-breaking") {
+    forceCycle = true;
+    if (!isFirstCyclePoint()) {
+      if (getProperty("useRigidTapping") != "yes") {
+        writeBlock(gCycleModal.format(80));
+      }
+      gMotionModal.reset();
+      gCycleModal.reset();
+    }
+  }
+  var useTappingSpeed = false;
+  if (isTappingCycle() && getProperty("useRigidTapping") == "yes" && getProperty("tappingSpeed") != 1) {
+    if ((spindleSpeed * getProperty("tappingSpeed")) > maxTappingRetractSpeed) {
+      warning(subst(localize("Tapping retract spindle speed is greater than %1."), maxTappingRetractSpeed));
+    }
+    useTappingSpeed = true;
+  }
+
+  if (forceCycle || isFirstCyclePoint()) {
     repositionToCycleClearance(cycle, x, y, z);
 
     // return to initial Z which is clearance plane and set absolute mode
@@ -1322,50 +1456,110 @@ function onCyclePoint(x, y, z) {
       );
       break;
     case "tapping":
-      if (getProperty("reversingHead")) {
-        expandTappingPoint(x, y, z);
-      } else {
-        if (!F) {
-          F = tool.getTappingFeedrate();
-        }
-        writeBlock(sOutput.format(spindleSpeed));
-        writeBlock(
-          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format((tool.type == TOOL_TAP_LEFT_HAND) ? 74 : 84),
-          getCommonCycle(x, y, z, cycle.retract),
-          "P" + secFormat.format(P), // dwell is required
-          feedOutput.format(F)
-        );
-      }
-      break;
     case "left-tapping":
-      if (getProperty("reversingHead")) {
+    case "right-tapping":
+      if (getProperty("useRigidTapping") == "reversing") {
         expandTappingPoint(x, y, z);
+      } else if (getProperty("useRigidTapping") == "yes") {
+        writeBlock(
+          gAbsIncModal.format(90),
+          gCycleModal.format(33.1),
+          xOutput.format(x), yOutput.format(y), zOutput.format(z),
+          conditional(useTappingSpeed, "I" + xyzFormat.format(getProperty("tappingSpeed"))),
+          pitchOutput.format(tool.threadPitch)
+        );
       } else {
         if (!F) {
           F = tool.getTappingFeedrate();
         }
         writeBlock(
-          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(74),
+          gRetractModal.format(98), gAbsIncModal.format(90),
+          gCycleModal.format((tool.type == TOOL_TAP_LEFT_HAND) ? 74 : 84),
           getCommonCycle(x, y, z, cycle.retract),
           "P" + secFormat.format(P), // dwell is required
+          conditional(useTappingSpeed, "I" + xyzFormat.format(getProperty("tappingSpeed"))),
           feedOutput.format(F)
         );
       }
       break;
-    case "right-tapping":
-      if (getProperty("reversingHead")) {
-        expandTappingPoint(x, y, z);
-      } else {
-        if (!F) {
-          F = tool.getTappingFeedrate();
-        }
-        writeBlock(
-          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(84),
-          getCommonCycle(x, y, z, cycle.retract),
-          "P" + secFormat.format(P), // dwell is required
-          feedOutput.format(F)
-        );
+    case "tapping-with-chip-breaking":
+      if (getProperty("useRigidTapping") == "reversing") {
+        error(subst(localize("Tapping with chip breaking is not supported when property '%1' is set to 'Self-reversing head'."), properties.useRigidTapping.title));
+        return;
       }
+      if (!F) {
+        F = tool.getTappingFeedrate();
+      }
+      var u = cycle.stock;
+      var step = cycle.incrementalDepth;
+      var first = true;
+      while (u > cycle.bottom) {
+        if (step < cycle.minimumIncrementalDepth) {
+          step = cycle.minimumIncrementalDepth;
+        }
+
+        u -= step;
+        step -= cycle.incrementalDepthReduction;
+        gCycleModal.reset(); // required
+        if ((u - 0.001) <= cycle.bottom) {
+          u = cycle.bottom;
+        }
+        if (first) {
+          first = false;
+          if (getProperty("useRigidTapping") == "yes") {
+            writeBlock(
+              gAbsIncModal.format(90),
+              gCycleModal.format(33.1),
+              xOutput.format((gPlaneModal.getCurrent() == 19) ? u : x),
+              yOutput.format((gPlaneModal.getCurrent() == 18) ? u : y),
+              zOutput.format((gPlaneModal.getCurrent() == 17) ? u : z),
+              conditional(useTappingSpeed, "I" + xyzFormat.format(getProperty("tappingSpeed"))),
+              pitchOutput.format(tool.threadPitch)
+            );
+          } else {
+            writeBlock(
+              gRetractModal.format(99),  gAbsIncModal.format(90),
+              gCycleModal.format((tool.type == TOOL_TAP_LEFT_HAND) ? 74 : 84),
+              getCommonCycle((gPlaneModal.getCurrent() == 19) ? u : x, (gPlaneModal.getCurrent() == 18) ? u : y, (gPlaneModal.getCurrent() == 17) ? u : z, cycle.retract, cycle.clearance),
+              "P" + secFormat.format(P), // dwell is required
+              conditional(useTappingSpeed, "I" + xyzFormat.format(getProperty("tappingSpeed"))),
+              feedOutput.format(F)
+            );
+          }
+        } else {
+          var position;
+          var depth;
+          switch (gPlaneModal.getCurrent()) {
+          case 17:
+            xOutput.reset();
+            position = xOutput.format(x);
+            depth = zOutput.format(u);
+            break;
+          case 18:
+            zOutput.reset();
+            position = zOutput.format(z);
+            depth = yOutput.format(u);
+            break;
+          case 19:
+            yOutput.reset();
+            position = yOutput.format(y);
+            depth = xOutput.format(u);
+            break;
+          }
+          if (getProperty("useRigidTapping") != "yes") {
+            writeBlock(conditional((u <= cycle.bottom), gRetractModal.format(98)), position, depth);
+          } else {
+            writeBlock(
+              gAbsIncModal.format(90),
+              gCycleModal.format(33.1),
+              depth,
+              conditional(useTappingSpeed, "I" + xyzFormat.format(getProperty("tappingSpeed"))),
+              pitchOutput.format(tool.threadPitch)
+            );
+          }
+        }
+      }
+      feedOutput.reset();
       break;
     case "fine-boring":
       writeBlock(
@@ -1375,6 +1569,7 @@ function onCyclePoint(x, y, z) {
         "Q" + xyzFormat.format(cycle.shift),
         feedOutput.format(F)
       );
+      forceSpindleSpeed = true;
       break;
     case "back-boring":
       var dx = (gPlaneModal.getCurrent() == 19) ? cycle.backBoreDistance : 0;
@@ -1388,6 +1583,7 @@ function onCyclePoint(x, y, z) {
         "P" + secFormat.format(P),
         feedOutput.format(F)
       );
+      forceSpindleSpeed = true;
       break;
     case "reaming":
       if (feedFormat.getResultingValue(cycle.feedrate) != feedFormat.getResultingValue(cycle.retractFeedrate)) {
@@ -1416,6 +1612,7 @@ function onCyclePoint(x, y, z) {
         "P" + secFormat.format(P),
         feedOutput.format(F)
       );
+      forceSpindleSpeed = true;
       break;
     case "manual-boring":
       writeBlock(
@@ -1451,7 +1648,7 @@ function onCyclePoint(x, y, z) {
   } else {
     if (cycleExpanded) {
       expandCyclePoint(x, y, z);
-    } else if (((cycleType == "tapping") || (cycleType == "right-tapping") || (cycleType == "left-tapping")) && getProperty("reversingHead")) {
+    } else if (((cycleType == "tapping") || (cycleType == "right-tapping") || (cycleType == "left-tapping")) && getProperty("useRigidTapping") == "reversingHead") {
       expandTappingPoint(x, y, z);
     } else {
       writeBlock(xOutput.format(x), yOutput.format(y));
@@ -1459,10 +1656,351 @@ function onCyclePoint(x, y, z) {
   }
 }
 
+function writeProbeCycle(cycle, x, y, z) {
+  if (isProbeOperation()) {
+    var probeRadius = tool.diameter / 2;
+    switch (cycleType) {
+    case "probing-x":
+      protectedProbeMove(x, y, cycle.retract, PROBE_RAPID);
+      protectedProbeMove(x, y, z - cycle.depth, PROBE_FEED);
+      var probeExpected = x + approach(cycle.approach1) * (cycle.probeClearance + probeRadius);
+      writeProbePosition(probeExpected + approach(cycle.approach1) * (cycle.probeOvertravel + probeRadius));
+      writeProbeExpectedX(probeExpected, true);
+      writeBlock("o<probe_x_edge> call", formatComment("Probe in X"));
+      break;
+    case "probing-y":
+      protectedProbeMove(x, y, cycle.retract, PROBE_RAPID);
+      protectedProbeMove(x, y, z - cycle.depth, PROBE_FEED);
+      var probeExpected = y + approach(cycle.approach1) * (cycle.probeClearance + probeRadius);
+      writeProbePosition(probeExpected + approach(cycle.approach1) * (cycle.probeOvertravel + probeRadius));
+      writeProbeExpectedY(probeExpected, true);
+      writeBlock("o<probe_y_edge> call", formatComment("Probe in Y"));
+      break;
+    case "probing-z":
+      protectedProbeMove(x, y, cycle.retract, PROBE_RAPID);
+      var probePosition = z - cycle.depth;
+      writeProbePosition(probePosition - cycle.probeOvertravel);
+      writeProbeExpectedZ(probePosition, true);
+      writeBlock("o<probe_z> call", formatComment("Probe in Z"));
+      break;
+    case "probing-x-wall":
+      var probeWidth = cycle.width1 / 2;
+      var p1 = x + probeWidth + (cycle.probeClearance + probeRadius);
+      var p2 = x - probeWidth - (cycle.probeClearance + probeRadius);
+      onExpandedRapid(p1, y, cycle.clearance);
+      protectedProbeMove(p1, y, cycle.retract, PROBE_RAPID);
+      protectedProbeMove(p1, y, z - cycle.depth, PROBE_FEED);
+      writeProbeClearance(cycle.retract);
+      writeProbePosition(x + probeWidth - (cycle.probeOvertravel - probeRadius), x - probeWidth + (cycle.probeOvertravel - probeRadius));
+      writeProbeXYZPosition(p2, y, z - cycle.depth);
+      writeProbeExpectedX(x, true);
+      writeBlock("o<probe_x_boss> call", formatComment("Probe X-Boss"));
+      break;
+    case "probing-y-wall":
+      var probeWidth = cycle.width1 / 2;
+      var p1 = y + probeWidth + (cycle.probeClearance + probeRadius);
+      var p2 = y - probeWidth - (cycle.probeClearance + probeRadius);
+      onExpandedRapid(x, p1, cycle.clearance);
+      protectedProbeMove(x, p1, cycle.retract, PROBE_RAPID);
+      protectedProbeMove(x, p1, z - cycle.depth, PROBE_FEED);
+      writeProbeClearance(cycle.retract);
+      writeProbePosition(y + probeWidth - (cycle.probeOvertravel - probeRadius), y - probeWidth + (cycle.probeOvertravel - probeRadius));
+      writeProbeXYZPosition(x, p2, z - cycle.depth);
+      writeProbeExpectedY(y, true);
+      writeBlock("o<probe_y_boss> call", formatComment("Probe Y-Boss"));
+      break;
+    case "probing-x-channel":
+      var probeWidth = cycle.width1 / 2;
+      var p1 = x + probeWidth - (cycle.probeClearance + probeRadius);
+      var p2 = x - probeWidth + (cycle.probeClearance + probeRadius);
+      onExpandedRapid(p1, y, cycle.clearance);
+      protectedProbeMove(p1, y, cycle.retract, PROBE_RAPID);
+      protectedProbeMove(p1, y, z - cycle.depth, PROBE_FEED);
+      writeProbeClearance(0); // no island
+      writeProbePosition(x + probeWidth + (cycle.probeOvertravel - probeRadius), x - probeWidth - (cycle.probeOvertravel - probeRadius));
+      writeProbeXYZPosition(p2, y, z - cycle.depth);
+      writeProbeExpectedX(x, true);
+      writeBlock("o<probe_x_pocket> call", formatComment("Probe X-Pocket"));
+      break;
+    case "probing-x-channel-with-island":
+      var probeWidth = cycle.width1 / 2;
+      var p1 = x + probeWidth - (cycle.probeClearance + probeRadius);
+      var p2 = x - probeWidth + (cycle.probeClearance + probeRadius);
+      onExpandedRapid(p1, y, cycle.clearance);
+      protectedProbeMove(p1, y, cycle.retract, PROBE_RAPID);
+      protectedProbeMove(p1, y, z - cycle.depth, PROBE_FEED);
+      writeProbeClearance(cycle.retract);
+      writeProbePosition(x + probeWidth + (cycle.probeOvertravel - probeRadius), x - probeWidth - (cycle.probeOvertravel - probeRadius));
+      writeProbeXYZPosition(p2, y, z - cycle.depth);
+      writeProbeExpectedX(x, true);
+      writeBlock("o<probe_x_pocket> call", formatComment("Probe X-Pocket"));
+      break;
+    case "probing-y-channel":
+      var probeWidth = cycle.width1 / 2;
+      var p1 = y + probeWidth - (cycle.probeClearance + probeRadius);
+      var p2 = y - probeWidth + (cycle.probeClearance + probeRadius);
+      onExpandedRapid(x, p1, cycle.clearance);
+      protectedProbeMove(x, p1, cycle.retract, PROBE_RAPID);
+      protectedProbeMove(x, p1, z - cycle.depth, PROBE_FEED);
+      writeProbeClearance(0);
+      writeProbePosition(y + probeWidth + (cycle.probeOvertravel - probeRadius), y - probeWidth - (cycle.probeOvertravel - probeRadius));
+      writeProbeXYZPosition(x, p2, z - cycle.depth);
+      writeProbeExpectedY(y, true);
+      writeBlock("o<probe_y_pocket> call", formatComment("Probe Y-Pocket"));
+      break;
+    case "probing-y-channel-with-island":
+      var probeWidth = cycle.width1 / 2;
+      var p1 = y + probeWidth - (cycle.probeClearance + probeRadius);
+      var p2 = y - probeWidth + (cycle.probeClearance + probeRadius);
+      onExpandedRapid(x, p1, cycle.clearance);
+      protectedProbeMove(x, p1, cycle.retract, PROBE_RAPID);
+      protectedProbeMove(x, p1, z - cycle.depth, PROBE_FEED);
+      writeProbeClearance(cycle.retract);
+      writeProbePosition(y + probeWidth + (cycle.probeOvertravel - probeRadius), y - probeWidth - (cycle.probeOvertravel - probeRadius));
+      writeProbeXYZPosition(x, p2, z - cycle.depth);
+      writeProbeExpectedY(y, true);
+      writeBlock("o<probe_y_pocket> call", formatComment("Probe Y-Pocket"));
+      break;
+    case "probing-xy-circular-boss":
+      protectedProbeMove(x, y, cycle.retract, PROBE_RAPID);
+      writeProbePosition(z - cycle.depth);
+      writeProbeClearance(cycle.retract);
+      writeProbeDiameter(cycle.width1 - (cycle.probeOvertravel - probeRadius), cycle.width1 + (cycle.probeClearance + probeRadius));
+      writeProbeExpectedX(x, false);
+      writeProbeExpectedY(y, true);
+      writeBlock("o<probe_circular_boss> call", formatComment("Probe Circular Boss"));
+      break;
+    case "probing-xy-circular-partial-boss":
+      protectedProbeMove(x, y, cycle.retract, PROBE_RAPID);
+      writeProbePosition(z - cycle.depth);
+      writeProbeClearance(cycle.retract);
+      writeProbeDiameter(cycle.width1 - (cycle.probeOvertravel - probeRadius), cycle.width1 + (cycle.probeClearance + probeRadius));
+      writeProbeVector(cycle.partialCircleAngleA, cycle.partialCircleAngleB, cycle.partialCircleAngleC);
+      writeProbeExpectedX(x, false);
+      writeProbeExpectedY(y, true);
+      writeBlock("o<probe_boss_three_point> call", formatComment("Probe Partial Circular Boss"));
+      break;
+    case "probing-xy-circular-hole":
+      protectedProbeMove(x, y, cycle.retract, PROBE_RAPID);
+      protectedProbeMove(x, y, z - cycle.depth, PROBE_FEED);
+      writeProbeClearance(0); // no island
+      writeProbeDiameter(cycle.width1 + (cycle.probeOvertravel - probeRadius), cycle.width1 - (cycle.probeClearance + probeRadius));
+      writeProbeExpectedX(x, false);
+      writeProbeExpectedY(y, true);
+      writeBlock("o<probe_circular_bore> call", formatComment("Probe Circular Bore"));
+      break;
+    case "probing-xy-circular-partial-hole":
+      protectedProbeMove(x, y, cycle.retract, PROBE_RAPID);
+      protectedProbeMove(x, y, z - cycle.depth, PROBE_FEED);
+      writeProbeDiameter(cycle.width1 + (cycle.probeOvertravel - probeRadius), cycle.width1 - (cycle.probeClearance + probeRadius));
+      writeProbeVector(cycle.partialCircleAngleA, cycle.partialCircleAngleB, cycle.partialCircleAngleC);
+      writeProbeExpectedX(x, false);
+      writeProbeExpectedY(y, true);
+      writeBlock("o<probe_bore_three_point> call", formatComment("Probe Partial Circular Bore"));
+      break;
+    case "probing-xy-circular-hole-with-island":
+      protectedProbeMove(x, y, cycle.retract, PROBE_RAPID);
+      protectedProbeMove(x, y, z - cycle.depth, PROBE_FEED);
+      writeProbeClearance(cycle.retract);
+      writeProbeDiameter(cycle.width1 + (cycle.probeOvertravel - probeRadius), cycle.width1 - (cycle.probeClearance + probeRadius));
+      writeProbeExpectedX(x, false);
+      writeProbeExpectedY(y, true);
+      writeBlock("o<probe_circular_bore> call", formatComment("Probe Circular Bore"));
+      break;
+    case "probing-xy-rectangular-hole":
+      var probeWidth = cycle.width1 / 2;
+      var p1 = x + probeWidth - (cycle.probeClearance + probeRadius);
+      var p2 = x - probeWidth + (cycle.probeClearance + probeRadius);
+      onExpandedRapid(p1, y, cycle.clearance);
+      protectedProbeMove(p1, y, cycle.retract, PROBE_RAPID);
+      protectedProbeMove(p1, y, z - cycle.depth, PROBE_FEED);
+      writeProbeClearance(0); // no island
+      writeProbePosition(x + probeWidth + (cycle.probeOvertravel - probeRadius), x - probeWidth - (cycle.probeOvertravel - probeRadius));
+      writeProbeXYZPosition(p2, y, z - cycle.depth);
+      writeProbeExpectedX(x, true);
+      writeBlock("o<probe_x_pocket> call", formatComment("Probe X-Pocket"));
+
+      probeWidth = cycle.width2 / 2;
+      p1 = y + probeWidth - (cycle.probeClearance + probeRadius);
+      p2 = y - probeWidth + (cycle.probeClearance + probeRadius);
+      protectedProbeMove(x, p1, cycle.retract, PROBE_RAPID);
+      protectedProbeMove(x, p1, z - cycle.depth, PROBE_FEED);
+      writeProbeClearance(0); // no island
+      writeProbePosition(y + probeWidth + (cycle.probeOvertravel - probeRadius), y - probeWidth - (cycle.probeOvertravel - probeRadius));
+      writeProbeXYZPosition(x, p2, z - cycle.depth);
+      writeProbeExpectedY(y, true);
+      writeBlock("o<probe_y_pocket> call", formatComment("Probe Y-Pocket"));
+      break;
+    case "probing-xy-rectangular-boss":
+      var probeWidth = cycle.width1 / 2;
+      var p1 = x + probeWidth + (cycle.probeClearance + probeRadius);
+      var p2 = x - probeWidth - (cycle.probeClearance + probeRadius);
+      onExpandedRapid(p1, y, cycle.clearance);
+      protectedProbeMove(p1, y, cycle.retract, PROBE_RAPID);
+      protectedProbeMove(p1, y, z - cycle.depth, PROBE_FEED);
+      writeProbeClearance(cycle.retract);
+      writeProbePosition(x + probeWidth - (cycle.probeOvertravel - probeRadius), x - probeWidth + (cycle.probeOvertravel - probeRadius));
+      writeProbeXYZPosition(p2, y, z - cycle.depth);
+      writeProbeExpectedX(x, true);
+      writeBlock("o<probe_x_boss> call", formatComment("Probe X-Boss"));
+
+      probeWidth = cycle.width2 / 2;
+      p1 = y + probeWidth + (cycle.probeClearance + probeRadius);
+      p2 = y - probeWidth - (cycle.probeClearance + probeRadius);
+      onExpandedRapid(x, p1, cycle.clearance);
+      protectedProbeMove(x, p1, cycle.retract, PROBE_RAPID);
+      protectedProbeMove(x, p1, z - cycle.depth, PROBE_FEED);
+      writeProbeClearance(cycle.retract);
+      writeProbePosition(y + probeWidth - (cycle.probeOvertravel - probeRadius), y - probeWidth + (cycle.probeOvertravel - probeRadius));
+      writeProbeXYZPosition(x, p2, z - cycle.depth);
+      writeProbeExpectedY(y, true);
+      writeBlock("o<probe_y_boss> call", formatComment("Probe Y-Boss"));
+      break;
+    case "probing-xy-rectangular-hole-with-island":
+      var probeWidth = cycle.width1 / 2;
+      var p1 = x + probeWidth - (cycle.probeClearance + probeRadius);
+      var p2 = x - probeWidth + (cycle.probeClearance + probeRadius);
+      onExpandedRapid(p1, y, cycle.clearance);
+      protectedProbeMove(p1, y, cycle.retract, PROBE_RAPID);
+      protectedProbeMove(p1, y, z - cycle.depth, PROBE_FEED);
+      writeProbeClearance(cycle.retract);
+      writeProbePosition(x + probeWidth + (cycle.probeOvertravel - probeRadius), x - probeWidth - (cycle.probeOvertravel - probeRadius));
+      writeProbeXYZPosition(p2, y, z - cycle.depth);
+      writeProbeExpectedX(x, true);
+      writeBlock("o<probe_x_pocket> call", formatComment("Probe X-Pocket"));
+
+      probeWidth = cycle.width2 / 2;
+      p1 = y + probeWidth - (cycle.probeClearance + probeRadius);
+      p2 = y - probeWidth + (cycle.probeClearance + probeRadius);
+      protectedProbeMove(x, p1, cycle.retract, PROBE_RAPID);
+      protectedProbeMove(x, p1, z - cycle.depth, PROBE_FEED);
+      writeProbeClearance(cycle.retract);
+      writeProbePosition(y + probeWidth + (cycle.probeOvertravel - probeRadius), y - probeWidth - (cycle.probeOvertravel - probeRadius));
+      writeProbeXYZPosition(x, p2, z - cycle.depth);
+      writeProbeExpectedY(y, true);
+      writeBlock("o<probe_y_pocket> call", formatComment("Probe Y-Pocket"));
+      break;
+
+    case "probing-xy-inner-corner":
+      var probeExpectedX = x + approach(cycle.approach1) * (cycle.probeClearance + probeRadius * 2);
+      var probeExpectedY = y + approach(cycle.approach2) * (cycle.probeClearance + probeRadius * 2);
+      var probeX = x + approach(cycle.approach1) * (cycle.probeClearance + cycle.probeOvertravel + probeRadius * 2);
+      var probeY = y + approach(cycle.approach2) * (cycle.probeClearance + cycle.probeOvertravel + probeRadius * 2);
+      protectedProbeMove(x, y, cycle.retract, PROBE_RAPID);
+      protectedProbeMove(x, y, z - cycle.depth, PROBE_FEED);
+      writeProbeClearance(cycle.retract);
+      writeProbePosition(probeX, probeY);
+      writeProbeXYZPosition(x, y, z - cycle.depth);
+      writeProbeExpectedX(probeExpectedX, false);
+      writeProbeExpectedY(probeExpectedY, true);
+      writeBlock("o<probe_xy_corner> call", formatComment("Probe XY Inner Corner"));
+      break;
+    case "probing-xy-outer-corner":
+      var probeExpectedX = x + approach(cycle.approach1) * (cycle.probeClearance + probeRadius);
+      var probeExpectedY = y + approach(cycle.approach2) * (cycle.probeClearance + probeRadius);
+      // TAG: contact point is not provided by CAM system
+      var px = x + approach(cycle.approach1) * ((cycle.probeOvertravel * 1.5) + cycle.probeOvertravel + probeRadius * 2);
+      var py = y + approach(cycle.approach2) * ((cycle.probeOvertravel * 1.5) + cycle.probeOvertravel + probeRadius * 2);
+      var probeX = x + approach(cycle.approach1) * (cycle.probeClearance + cycle.probeOvertravel + probeRadius * 2);
+      var probeY = y + approach(cycle.approach2) * (cycle.probeClearance + cycle.probeOvertravel + probeRadius * 2);
+      onExpandedRapid(x, py, cycle.clearance);
+      protectedProbeMove(x, py, cycle.retract, PROBE_RAPID);
+      protectedProbeMove(x, py, z - cycle.depth, PROBE_FEED);
+      writeProbeClearance(cycle.retract);
+      writeProbePosition(probeX, probeY);
+      writeProbeXYZPosition(px, y, z - cycle.depth);
+      writeProbeExpectedX(probeExpectedX, false);
+      writeProbeExpectedY(probeExpectedY, true);
+      writeBlock("o<probe_xy_corner> call", formatComment("Probe XY Outer Corner"));
+      break;
+    case "probing-x-plane-angle":
+      error(localize("Probing cycle '" + cycleType + "' is not supported."));
+      break;
+    case "probing-y-plane-angle":
+      error(localize("Probing cycle '" + cycleType + "' is not supported."));
+      break;
+    default:
+      expandCyclePoint(x, y, z);
+    }
+  }
+}
+
+function writeProbePosition(position1, position2) { // position2 is optional
+  writeBlock("#<_first_position_to_probe> = " + xyzFormat.format(position1));
+  if (typeof position2 == "number") {
+    writeBlock("#<_second_position_to_probe> = " + xyzFormat.format(position2));
+  }
+}
+
+function writeProbeXYZPosition(x, y, z) {
+  writeBlock("#<_second_x_position> = " + xyzFormat.format(x));
+  writeBlock("#<_second_y_position> = " + xyzFormat.format(y));
+  writeBlock("#<_second_z_position> = " + xyzFormat.format(z));
+}
+
+function writeProbeExpectedX(x, updateWCS) {
+  writeBlock("#<_x_wcs_offset> = " + xyzFormat.format(x));
+  writeProbeWCS(updateWCS);
+}
+
+function writeProbeExpectedY(y, updateWCS) {
+  writeBlock("#<_y_wcs_offset> = " + xyzFormat.format(y));
+  writeProbeWCS(updateWCS);
+}
+
+function writeProbeExpectedZ(z, updateWCS) {
+  writeBlock("#<_z_wcs_offset> = " + xyzFormat.format(z));
+  writeProbeWCS(updateWCS);
+}
+
+function writeProbeDiameter(probeDiameter, clearanceDiameter) {
+  writeBlock("#<diameter_to_probe> = " + xyzFormat.format(probeDiameter));
+  writeBlock("#<diameter_to_position> = " + xyzFormat.format(clearanceDiameter));
+}
+
+function writeProbeVector(a, b, c) {
+  writeBlock("#<first_vector> = " + xyzFormat.format(a < 0 ? a + 360 : a));
+  writeBlock("#<second_vector> = " + xyzFormat.format(b < 0 ? b + 360 : b));
+  writeBlock("#<third_vector> = " + xyzFormat.format(c < 0 ? c + 360 : c));
+}
+
+function writeProbeClearance(clearance) {
+  writeBlock("#<_z_clearance_position> = " + xyzFormat.format(clearance));
+}
+
+function writeProbeWCS(updateWCS) {
+  if (updateWCS) {
+    if (currentSection.strategy == "probe") { // WCS probing
+      var probeOutputWorkOffset = currentSection.probeWorkOffset;
+      validate(
+        probeOutputWorkOffset > 0 && (probeOutputWorkOffset > 6 ? probeOutputWorkOffset - 6 : probeOutputWorkOffset) <= 500,
+        "Probe work offset is out of range."
+      );
+      var nextWorkOffset = hasNextSection() ? getNextSection().workOffset == 0 ? 1 : getNextSection().workOffset : -1;
+      if (probeOutputWorkOffset == nextWorkOffset) {
+        currentWorkOffset = undefined;
+      }
+      writeBlock("#<_measuring_wcs> = " + probeOutputWorkOffset);
+    } else { // Geometry probing
+      error(localize("Geometry probing is not supported by the CNC control."));
+      return;
+      // writeBlock("#<_inspect_only> = 1");
+    }
+  }
+}
+
 function onCycleEnd() {
-  if (!cycleExpanded) {
-    writeBlock(gCycleModal.format(80));
-    zOutput.reset();
+  if (!isProbeOperation()) {
+    if (!cycleExpanded && (!isTappingCycle() || getProperty("useRigidTapping") != "yes")) {
+      writeBlock(gCycleModal.format(80));
+      zOutput.reset();
+    }
+  } else {
+    if (currentSection.strategy == "probe") { // WCS probing
+      writeBlock(currentSection.wcs);
+    }
+    gAbsIncModal.reset();
+    writeBlock(gAbsIncModal.format(90));
   }
 }
 
@@ -1657,8 +2195,6 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
 }
 
 var mapCommand = {
-  COMMAND_STOP                    : 0,
-  COMMAND_OPTIONAL_STOP           : 1,
   COMMAND_END                     : 2,
   COMMAND_SPINDLE_CLOCKWISE       : 3,
   COMMAND_SPINDLE_COUNTERCLOCKWISE: 4,
@@ -1671,6 +2207,14 @@ var mapCommand = {
 
 function onCommand(command) {
   switch (command) {
+  case COMMAND_STOP:
+    writeBlock(mFormat.format(0));
+    forceSpindleSpeed = true;
+    return;
+  case COMMAND_OPTIONAL_STOP:
+    writeBlock(mFormat.format(1));
+    forceSpindleSpeed = true;
+    return;
   case COMMAND_START_SPINDLE:
     onCommand(tool.clockwise ? COMMAND_SPINDLE_CLOCKWISE : COMMAND_SPINDLE_COUNTERCLOCKWISE);
     return;
@@ -1679,6 +2223,14 @@ function onCommand(command) {
   case COMMAND_UNLOCK_MULTI_AXIS:
     return;
   case COMMAND_BREAK_CONTROL:
+    if (!toolChecked) { // avoid duplicate COMMAND_BREAK_CONTROL
+      prepareForToolCheck();
+      writeBlock(
+        gFormat.format(37),
+        "P" + xyzFormat.format(getProperty("toolBreakageTolerance"))
+      );
+      toolChecked = true;
+    }
     return;
   case COMMAND_TOOL_MEASURE:
     return;
@@ -1693,6 +2245,35 @@ function onCommand(command) {
   }
 }
 
+/**
+ Buffer Manual NC commands for processing later
+*/
+var manualNC = [];
+function onManualNC(command, value) {
+  if (true) {
+    manualNC.push({command:command, value:value});
+  } else {
+    expandManualNC(command, value);
+  }
+}
+
+/**
+ Processes the Manual NC commands
+ Pass the desired command to process or leave argument list blank to process all buffered commands
+*/
+function executeManualNC(command) {
+  for (var i = 0; i < manualNC.length; ++i) {
+    if (!command || (command == manualNC[i].command)) {
+      expandManualNC(manualNC[i].command, manualNC[i].value);
+    }
+  }
+  for (var i = manualNC.length - 1; i >= 0; --i) {
+    if (!command || (command == manualNC[i].command)) {
+      manualNC.splice(i, 1);
+    }
+  }
+}
+
 function onSectionEnd() {
   writeBlock(gPlaneModal.format(17));
 
@@ -1700,24 +2281,22 @@ function onSectionEnd() {
     writeBlock(gFeedModeModal.format(94)); // inverse time feed off
   }
 
-  if (((getCurrentSectionId() + 1) >= getNumberOfSections()) ||
-      (tool.number != getNextSection().getTool().number)) {
+  if ((((getCurrentSectionId() + 1) >= getNumberOfSections()) ||
+      (tool.number != getNextSection().getTool().number)) &&
+      tool.breakControl) {
     onCommand(COMMAND_BREAK_CONTROL);
+  } else {
+    toolChecked = false;
   }
 
   forceAny();
 
-  if (((getCurrentSectionId() + 1) >= getNumberOfSections()) ||
-      (tool.number != getNextSection().getTool().number)) {
+  if ((((getCurrentSectionId() + 1) >= getNumberOfSections()) ||
+      (tool.number != getNextSection().getTool().number)) && !toolChecked) {
     writeBlock(
       mFormat.format(5),
       mFormat.format(9)
     );
-  }
-
-  // the code below gets the machine angles from previous operation.  closestABC must also be set to true
-  if (currentSection.isMultiAxis() && currentSection.isOptimizedForMachine()) {
-    currentMachineABC = currentSection.getFinalToolAxisABC();
   }
 }
 
@@ -1857,8 +2436,6 @@ function onReturnFromSafeRetractPosition(_x, _y, _z) {
 function onClose() {
   writeln("");
 
-  // onCommand(COMMAND_COOLANT_OFF);
-
   writeRetract(Z);
 
   retracted = true;
@@ -1869,12 +2446,11 @@ function onClose() {
     positionABC(new Vector(0, 0, 0), true);
   }
 
+  // Process Manual NC commands
+  executeManualNC();
+
   onImpliedCommand(COMMAND_END);
   onImpliedCommand(COMMAND_STOP_SPINDLE);
   writeBlock(mFormat.format(30)); // stop program, spindle stop, coolant off
   writeln("%");
-}
-
-function setProperty(property, value) {
-  properties[property].current = value;
 }
